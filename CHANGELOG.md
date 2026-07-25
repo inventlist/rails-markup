@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.4] - 2026-07-26
+
+### Fixed
+
+- Popup intent/severity `<select>` controls now force `display:inline-block` (plus `visibility`/`opacity`), so hosts that hide unstyled selects — e.g. Materialize's `select:not(.browser-default){display:none}` — no longer make the dropdowns disappear. Follow-up to #4, found in review.
+
 ## [1.2.3] - 2026-07-26
 
 ### Fixed

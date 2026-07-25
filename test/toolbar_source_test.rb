@@ -40,5 +40,8 @@ class ToolbarSourceTest < Minitest::Test
     assert_includes source, "-webkit-appearance:none"
     assert_includes source, "background-image:none"
     assert_includes source, "box-shadow:none"
+    # Force display so host rules like Materialize's
+    # `select:not(.browser-default){display:none}` can't hide the dropdowns.
+    assert_includes source, "#rm-toolbar-root .rm-popup select { display:inline-block;"
   end
 end
