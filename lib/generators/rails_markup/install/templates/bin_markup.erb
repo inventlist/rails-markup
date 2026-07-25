@@ -1,5 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# Set up Bundler so the gem's lib path is on $LOAD_PATH. This matters when
+# rails-markup is installed from a git source, where its files live outside
+# Ruby's default load path until bundler/setup runs.
+require "bundler/setup"
 require "rails_markup/cli"
 RailsMarkup::Cli.start(ARGV)

@@ -64,7 +64,7 @@ The generator creates:
 | `app/controllers/rails_markup_auth_controller.rb` | Auth controller |
 | `bin/markup` | CLI wrapper |
 | Route mount | Engine at `/admin/annotations` |
-| Toolbar injection | `<%= render "rails_markup/shared/toolbar" %>` in your layout |
+| Toolbar injection | Admin-gated `render "rails_markup/shared/toolbar"` in your layout |
 
 ### Generator options
 
@@ -82,6 +82,12 @@ and the toolbar API. It denies access unless `current_user.admin?` is true;
 customize `authorize_rails_markup!` if your host uses another authorization
 policy. The configured base controller must actually enforce authorization.
 Choosing a public controller makes both interfaces public.
+
+The install generator injects the toolbar behind an admin gate
+(`current_user.admin?`) rather than rendering it unconditionally, so the FAB and
+toolbar chrome only appear for the same users the dashboard/API authorize. If
+your app authorizes annotators differently, adjust that gate in your layout to
+match `authorize_rails_markup!`.
 
 The toolbar uses the same host authentication boundary as the dashboard and
 sends normal Rails CSRF tokens on every mutation. Keep `csrf_meta_tags` in the

@@ -30,4 +30,15 @@ class ToolbarSourceTest < Minitest::Test
 
     assert_includes partial, "RailsMarkup.config.toolbar_enabled"
   end
+
+  def test_popup_selects_are_isolated_from_host_form_styles
+    source = File.read(File.join(ROOT, "app/assets/javascripts/rails_markup/toolbar.js"))
+
+    # Higher-specificity, hard-reset rule so host <select> styles (underlines,
+    # box-shadows, background images) cannot bleed into the popup dropdowns.
+    assert_includes source, "#rm-toolbar-root .rm-popup select"
+    assert_includes source, "-webkit-appearance:none"
+    assert_includes source, "background-image:none"
+    assert_includes source, "box-shadow:none"
+  end
 end

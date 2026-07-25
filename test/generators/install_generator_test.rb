@@ -138,11 +138,48 @@ class InstallGeneratorTest < ActiveSupport::TestCase
     assert_match(/toolbar API/i, content)
   end
 
+  test "bin wrapper template sets up Bundler before requiring the CLI" do
+    template_path = File.expand_path(
+      "../../lib/generators/rails_markup/install/templates/bin_markup.erb",
+      __dir__
+    )
+    content = File.read(template_path)
+
+    # Git-source installs live off the default $LOAD_PATH until bundler/setup
+    # runs, so it must come before requiring rails_markup/cli (issue #2).
+    assert_match(/require "bundler\/setup"/, content)
+    assert_operator content.index('require "bundler/setup"'),
+      :<, content.index('require "rails_markup/cli"'),
+      "bundler/setup must be required before rails_markup/cli"
+  end
+
   # -- Procfile.dev injection --
 
   test "generator defines inject_procfile method" do
     generator = RailsMarkup::Generators::InstallGenerator.new
     assert generator.respond_to?(:inject_procfile),
       "InstallGenerator should define inject_procfile method"
+  end
+
+  test "Procfile injection guards against a missing trailing newline" do
+    source = File.read(File.expand_path(
+      "../../lib/generators/rails_markup/install_generator.rb", __dir__
+    ))
+
+    # Appending must not glue the markup process onto an EOF-newline-less
+    # last line (issue #1).
+    assert_match(/end_with\?\("\\n"\)/, source)
+  end
+
+  test "toolbar layout injection is gated on an authorized admin" do
+    source = File.read(File.expand_path(
+      "../../lib/generators/rails_markup/install_generator.rb", __dir__
+    ))
+
+    # The injected gate must check authorization, not merely that the partial
+    # exists, so the toolbar does not ship to logged-out/non-admin users
+    # (issue #3).
+    assert_match(/current_user\.admin\?/, source)
+    refute_match(/lookup_context\.exists\?/, source)
   end
 end

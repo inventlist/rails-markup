@@ -58,9 +58,14 @@ module RailsMarkup
           return
         end
 
+        # Gate the toolbar on the same authorization contract as the engine's
+        # auth controller (current_user.admin?), not merely on the partial
+        # existing — otherwise the FAB/toolbar chrome ships to every visitor,
+        # including logged-out and non-admin users. Adjust this condition if
+        # your app authorizes annotators differently.
         toolbar_block = <<~ERB.indent(4)
-          <%# Rails Markup annotation toolbar %>
-          <% if lookup_context.exists?("rails_markup/shared/toolbar", [], true) %>
+          <%# Rails Markup annotation toolbar (admins only) %>
+          <% if respond_to?(:current_user) && current_user.respond_to?(:admin?) && current_user.admin? %>
             <%= render "rails_markup/shared/toolbar" %>
           <% end %>
         ERB
@@ -87,7 +92,11 @@ module RailsMarkup
             say_status :skip, "Procfile.dev already uses bin/markup server", :yellow
           end
         else
-          append_to_file "Procfile.dev", "markup: bin/markup server\n"
+          # Ensure the existing content ends with a newline so the markup
+          # process starts on its own line even when Procfile.dev has no
+          # trailing newline (otherwise it glues onto the last process).
+          leading = content.empty? || content.end_with?("\n") ? "" : "\n"
+          append_to_file "Procfile.dev", "#{leading}markup: bin/markup server\n"
           say_status :append, "Procfile.dev (added markup server)", :green
         end
       end

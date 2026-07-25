@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.3] - 2026-07-26
+
+### Fixed
+
+- Install generator now injects the toolbar behind an admin gate (`current_user.admin?`) instead of a partial-existence check, so the FAB/toolbar chrome no longer ships to logged-out or non-admin users (#3).
+- `bin/markup` now requires `bundler/setup` before the CLI, fixing a `LoadError` when rails-markup is installed from a git source (#2).
+- Procfile.dev injection ensures a leading newline so the `markup:` process no longer glues onto a last line that lacks a trailing newline (#1).
+- Popup intent/severity `<select>` controls are isolated from host form CSS with higher-specificity hard resets (border/background/box-shadow/appearance), preventing host underline styles from bleeding through (#4).
+
 ## [1.2.2] - 2026-07-23
 
 ### Fixed
