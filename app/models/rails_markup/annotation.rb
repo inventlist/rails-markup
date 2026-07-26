@@ -107,10 +107,16 @@ module RailsMarkup
     end
 
     def acknowledge!
-      return self if status == "acknowledged" # idempotent — re-acknowledging is a no-op
-      raise "Cannot acknowledge a #{status} annotation" unless status == "pending"
+      # Lock + reload so a concurrent resolve!/dismiss! can't be clobbered:
+      # without it, an acknowledge validated against a stale "pending" could
+      # write "acknowledged" over an already-resolved record.
+      with_lock do
+        return self if status == "acknowledged" # idempotent — re-acknowledging is a no-op
+        raise "Cannot acknowledge a #{status} annotation" unless status == "pending"
 
-      update!(status: "acknowledged")
+        update!(status: "acknowledged")
+      end
+      self
     end
 
     def resolve!(summary: nil)

@@ -195,6 +195,26 @@ class InstallGeneratorTest < ActiveSupport::TestCase
     assert_match(/gsub_file layout_path, legacy, toolbar_block/, source)
   end
 
+  test "install generator rejects an unsafe table name" do
+    generator = RailsMarkup::Generators::InstallGenerator.new([], { "table_name" => "feedback-items" })
+    assert_raises(Thor::Error) { generator.validate_table_name }
+  end
+
+  test "install generator accepts a valid table name" do
+    generator = RailsMarkup::Generators::InstallGenerator.new([], { "table_name" => "my_annotations" })
+    assert_nil generator.validate_table_name
+  end
+
+  test "legacy toolbar-block regex requires the generated render line" do
+    source = File.read(File.expand_path(
+      "../../lib/generators/rails_markup/install_generator.rb", __dir__
+    ))
+    legacy_line = source[/legacy\s*=.*/]
+    # Must anchor on the render line so a hand-written block that merely contains
+    # lookup_context…end isn't swallowed.
+    assert_includes legacy_line, 'render\s+"rails_markup\/shared\/toolbar"'
+  end
+
   test "migration schema gives page_url a 2048 limit with an adapter-safe index" do
     template_path = File.expand_path(
       "../../lib/generators/rails_markup/install/templates/create_rails_markup_annotations.rb.erb",

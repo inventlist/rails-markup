@@ -28,6 +28,10 @@ class CreateRailsMarkupAnnotations < ActiveRecord::Migration<%= migration_versio
     if connection.adapter_name.downcase.include?("mysql")
       add_index :<%= options[:table_name] %>, :page_url, length: 191
     else
+      # PostgreSQL indexes the full column so `where(page_url:)` lookups stay
+      # fast. A btree entry tops out near 2704 bytes, so a pathological
+      # multibyte URL approaching the 2048-char cap could exceed it; real URLs
+      # are far shorter. Switch to an expression index if that ever bites you.
       add_index :<%= options[:table_name] %>, :page_url
     end
     add_index :<%= options[:table_name] %>, :user_id

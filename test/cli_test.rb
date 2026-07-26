@@ -135,17 +135,18 @@ class CliTest < Minitest::Test
     refute_match(/API error|Connection error/, output, "must not attempt the request over http")
   end
 
-  def test_resolve_mcp_env_merges_scopes_instead_of_first_non_empty
-    # Regression guard: a local config with only dev values must not shadow
-    # production creds in global/codex. The merge walks scopes low→high
-    # precedence rather than returning the first non-empty config. (Asserted
-    # on source to avoid writing to the real ~/.claude / ~/.codex globals.)
+  def test_env_resolution_binds_url_and_token_to_one_scope
+    # Regression guard: URL, token, and mount must come from a SINGLE config
+    # scope so a repo-local URL can't be paired with a global token (credential
+    # provenance), while a local dev-only config still doesn't shadow global
+    # prod creds. Asserted on source to avoid writing the real ~/.claude globals.
     source = File.read(File.expand_path("../lib/rails_markup/cli.rb", __dir__))
-    merge_body = source[/def resolve_mcp_env.*?\n    end/m]
-    assert merge_body, "resolve_mcp_env not found"
-    assert_includes merge_body, "reverse_each"
-    refute_includes merge_body, "return env unless env.empty?",
-      "must merge scopes, not return the first non-empty config"
+    resolver = source[/def scoped_env.*?\n    end/m]
+    assert resolver, "scoped_env not found"
+    # Selects a whole scope by key presence, not a per-key merge across scopes.
+    assert_includes resolver, "return env if keys.any?"
+    refute_includes source, "def resolve_mcp_env",
+      "the cross-scope per-key merge must be gone"
   end
 
   # -- McpConfig detect_command --

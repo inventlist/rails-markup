@@ -25,6 +25,14 @@
     };
     // Init immediately (DOM is ready — script is at end of body)
     RailsMarkupToolbar.init(opts);
+    // Tear down before Turbo snapshots the page for its cache — otherwise the
+    // cached DOM keeps a toolbar root with no live listeners, and on restore
+    // init() would early-return on that dead root instead of rebinding.
+    document.addEventListener("turbo:before-cache", function() {
+      if (window.RailsMarkupToolbar && typeof RailsMarkupToolbar.destroy === "function") {
+        RailsMarkupToolbar.destroy();
+      }
+    });
     // After Turbo Drive navigations (DOMContentLoaded won't fire again), only
     // re-init when the new page is still authorized (gate sentinel present);
     // otherwise tear the toolbar down so it can't persist past a logout.

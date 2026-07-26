@@ -643,29 +643,30 @@ module RailsMarkup
       "local"
     end
 
-    # Merge configs per-key with local taking precedence over global over codex.
-    # Merging (rather than returning the first non-empty config) means a local
-    # config that only defines dev values doesn't shadow production credentials
-    # stored globally or in the codex config.
-    def resolve_mcp_env
-      merged = {}
-      # Reverse so the highest-precedence scope (local) is applied last and wins.
-      McpConfig::SCOPES.reverse_each do |scope|
+    # Return the raw env of the highest-precedence scope (local → global → codex)
+    # that defines any of the given keys. URL, token, and mount are always read
+    # from this single scope so a token is never paired with a URL from another
+    # scope (credential provenance). A local config that only defines dev values
+    # is skipped for production lookups, so it neither shadows nor captures the
+    # production credentials stored globally/in codex.
+    def scoped_env(*keys)
+      McpConfig::SCOPES.each do |scope|
         config = McpConfig.new(scope: scope)
         next unless config.exist?
 
-        # Skip blank values so an empty key in a higher-precedence config
-        # doesn't clobber a real value from a lower-precedence one.
-        config.raw_env.each do |key, value|
-          merged[key] = value unless value.to_s.strip.empty?
-        end
+        env = config.raw_env
+        return env if keys.any? { |k| env[k].to_s.strip != "" }
       end
 
-      merged
+      {}
     end
 
     def resolve_env(production)
-      mcp_env = resolve_mcp_env
+      mcp_env = if production
+        scoped_env("RAILS_MARKUP_PROD_URL", "RAILS_MARKUP_PROD_TOKEN")
+      else
+        scoped_env("RAILS_MARKUP_DEV_URL", "RAILS_MARKUP_DEV_TOKEN")
+      end
 
       if production
         base_url = options[:url] || mcp_env["RAILS_MARKUP_PROD_URL"]

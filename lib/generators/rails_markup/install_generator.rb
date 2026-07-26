@@ -21,6 +21,20 @@ module RailsMarkup
       class_option :table_name, type: :string, default: "rails_markup_annotations",
         desc: "Database table name for annotations (must match config.table_name)"
 
+      # Conservative SQL identifier: leading letter/underscore, then letters,
+      # digits, underscores. Blocks names that would produce invalid Ruby/SQL or
+      # inject into the migration/initializer templates (e.g. "feedback-items",
+      # quotes, newlines).
+      TABLE_NAME_PATTERN = /\A[a-zA-Z_][a-zA-Z0-9_]*\z/
+
+      def validate_table_name
+        return if options[:table_name].match?(TABLE_NAME_PATTERN)
+
+        raise Thor::Error,
+          "Invalid --table-name #{options[:table_name].inspect}: use only letters, " \
+          "digits, and underscores, starting with a letter or underscore."
+      end
+
       def copy_migration
         migration_template "create_rails_markup_annotations.rb.erb",
           "db/migrate/create_rails_markup_annotations.rb"
@@ -76,7 +90,10 @@ module RailsMarkup
           # Upgrade the pre-1.2.3 partial-existence gate, which rendered the
           # toolbar for every visitor, to the admin-gated block. Leave any
           # custom (hand-edited) block untouched so we don't clobber it.
-          legacy = /^[ \t]*<%#\s*Rails Markup annotation toolbar\s*%>\r?\n[ \t]*<%\s*if\s+lookup_context\.exists\?.*?<%\s*end\s*%>\r?\n?/m
+          # Match the exact historical generated block (allowing ERB trim tags)
+          # — including its own render line — so we never swallow a hand-written
+          # block that merely happens to contain lookup_context…end.
+          legacy = /^[ \t]*<%#\s*Rails Markup annotation toolbar\s*%>\r?\n[ \t]*<%-?\s*if\s+lookup_context\.exists\?\("rails_markup\/shared\/toolbar".*?-?%>\r?\n[ \t]*<%=\s*render\s+"rails_markup\/shared\/toolbar"\s*-?%>\r?\n[ \t]*<%-?\s*end\s*-?%>\r?\n?/m
           if content =~ legacy
             gsub_file layout_path, legacy, toolbar_block
             say_status :update, "upgraded toolbar to admin-gated render in #{layout_path}", :green

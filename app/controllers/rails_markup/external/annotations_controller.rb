@@ -61,7 +61,10 @@ module RailsMarkup
         return if Rails.env.development? && !RailsMarkup.config.require_api_token_in_development
 
         token = RailsMarkup.config.api_token
-        return head(:not_found) if token.nil?
+        # Treat a nil OR blank token as "external API disabled" — otherwise a
+        # token of "" would make secure_compare("", "") true and authenticate
+        # every request (including ones with no Authorization header).
+        return head(:not_found) if token.nil? || token.to_s.strip.empty?
 
         provided = request.headers["Authorization"]&.delete_prefix("Bearer ")
         head(:unauthorized) unless ActiveSupport::SecurityUtils.secure_compare(provided.to_s, token)

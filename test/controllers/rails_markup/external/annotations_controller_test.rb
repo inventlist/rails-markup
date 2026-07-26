@@ -33,6 +33,17 @@ module RailsMarkup
         RailsMarkup.config.api_token = original
       end
 
+      test "blank api_token disables the API instead of authenticating everyone" do
+        original = RailsMarkup.config.api_token
+        RailsMarkup.config.api_token = ""
+
+        # No Authorization header — must NOT authenticate (secure_compare("","")).
+        get external_pending_path
+        assert_response :not_found
+      ensure
+        RailsMarkup.config.api_token = original
+      end
+
       # --- Pending ---
 
       test "pending returns pending annotations" do

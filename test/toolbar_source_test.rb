@@ -64,4 +64,19 @@ class ToolbarSourceTest < Minitest::Test
     assert_includes partial, "rm-toolbar-gate"
     assert_includes partial, "RailsMarkupToolbar.destroy()"
   end
+
+  def test_toolbar_tears_down_before_turbo_cache_snapshot
+    partial = File.read(File.join(ROOT, "app/views/rails_markup/shared/_toolbar.html.erb"))
+
+    # Turbo caches the page before navigating; without a before-cache teardown
+    # the cached DOM keeps a dead toolbar root and init() early-returns on it.
+    assert_includes partial, 'addEventListener("turbo:before-cache"'
+  end
+
+  def test_acknowledge_runs_under_a_row_lock
+    model = File.read(File.join(ROOT, "app/models/rails_markup/annotation.rb"))
+    ack = model[/def acknowledge!.*?\n    end/m]
+    assert ack, "acknowledge! not found"
+    assert_includes ack, "with_lock", "acknowledge! must lock to avoid reopening a resolved record"
+  end
 end
