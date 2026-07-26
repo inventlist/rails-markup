@@ -102,7 +102,9 @@ module RailsMarkup
       assert_difference "Annotation.count", 1 do
         put "/feedback/api/annotations/#{BROWSER_UUID}",
           params: { content: "Created", page_url: "/put", intent: "fix", severity: "important",
-                    selectedText: "selection", target: { selector: "main" }, metadata: { tool: "toolbar" } },
+                    selectedText: "selection", target: { selector: "main" }, metadata: { tool: "toolbar" },
+                    dirtyFields: %w[content page_url intent severity selectedText target metadata],
+                    baseRevision: 0 },
           as: :json
       end
 
@@ -117,13 +119,18 @@ module RailsMarkup
       uppercase = lowercase.upcase
 
       put "/feedback/api/annotations/#{uppercase}",
-        params: { content: "Created uppercase", page_url: "/case" }, as: :json
+        params: {
+          content: "Created uppercase",
+          page_url: "/case",
+          dirtyFields: %w[content page_url],
+          baseRevision: 0
+        }, as: :json
       assert_response :ok
       assert_equal lowercase, response.parsed_body["clientId"]
 
       assert_no_difference "Annotation.count" do
         put "/feedback/api/annotations/#{lowercase}",
-          params: { content: "Updated lowercase", page_url: "/case" }, as: :json
+          params: { content: "Updated lowercase", dirtyFields: ["content"], baseRevision: 1 }, as: :json
       end
       assert_equal "Updated lowercase", Annotation.find_by!(client_uuid: lowercase).content
 
@@ -147,7 +154,8 @@ module RailsMarkup
       put "/feedback/api/annotations/#{BROWSER_UUID}",
         params: { id: "forged", userId: 99, author: "Forged", content: "After", page_url: "/after",
                   status: "pending", createdAt: "2000-01-01", thread: [],
-                  metadata: { tool: "new", serverOnly: false } },
+                  metadata: { tool: "new", serverOnly: false },
+                  dirtyFields: %w[content page_url metadata], baseRevision: 0 },
         as: :json
 
       assert_response :ok
@@ -304,12 +312,24 @@ module RailsMarkup
       annotation = Annotation.create!(client_uuid: STATUS_UUID, content: "Status", page_url: "/status", status: "acknowledged")
 
       put "/feedback/api/annotations/#{STATUS_UUID}",
-        params: { content: "Ordinary edit", page_url: "/status", status: "resolved" }, as: :json
+        params: {
+          content: "Ordinary edit",
+          page_url: "/status",
+          status: "resolved",
+          dirtyFields: ["content"],
+          baseRevision: 0
+        }, as: :json
       assert_response :ok
       assert_equal "acknowledged", annotation.reload.status
 
       put "/feedback/api/annotations/#{STATUS_UUID}",
-        params: { content: "Ordinary edit", page_url: "/status", status: "resolved", dirtyFields: ["status"] },
+        params: {
+          content: "Ordinary edit",
+          page_url: "/status",
+          status: "resolved",
+          dirtyFields: ["status"],
+          baseRevision: 1
+        },
         as: :json
       assert_response :ok
       assert_equal "resolved", annotation.reload.status
@@ -324,7 +344,8 @@ module RailsMarkup
           page_url: "/dirty",
           target: { selector: "main" },
           selectedText: "Selected",
-          dirtyFields: %w[content target selectedText]
+          dirtyFields: %w[content target selectedText],
+          baseRevision: 0
         },
         as: :json
 
@@ -333,6 +354,44 @@ module RailsMarkup
       assert_equal "After", annotation.content
       assert_equal({ "selector" => "main" }, annotation.target)
       assert_equal "Selected", annotation.selected_text
+    end
+
+    test "stale browser put conflicts instead of clobbering a concurrent edit" do
+      annotation = Annotation.create!(
+        client_uuid: DIRTY_UUID,
+        content: "Original",
+        page_url: "/concurrent",
+        severity: "suggestion",
+        revision: 0
+      )
+
+      put "/feedback/api/annotations/#{DIRTY_UUID}",
+        params: {
+          content: "First client edit",
+          severity: "suggestion",
+          dirtyFields: ["content"],
+          baseRevision: 0
+        },
+        as: :json
+
+      assert_response :ok
+      assert_equal 1, response.parsed_body["revision"]
+
+      put "/feedback/api/annotations/#{DIRTY_UUID}",
+        params: {
+          content: "Original",
+          severity: "blocking",
+          dirtyFields: ["severity"],
+          baseRevision: 0
+        },
+        as: :json
+
+      assert_response :conflict
+      assert_equal 1, response.parsed_body.dig("annotation", "revision")
+      annotation.reload
+      assert_equal "First client edit", annotation.content
+      assert_equal "suggestion", annotation.severity
+      assert_equal 1, annotation.revision
     end
 
     test "put rejects invalid dirty fields and invalid explicitly dirty status" do
@@ -364,7 +423,13 @@ module RailsMarkup
         candidate.stub :save!, race do
           assert_difference "Annotation.count", 1 do
             put "/feedback/api/annotations/#{RACE_UUID}",
-              params: { content: "Desired", page_url: "/race", metadata: { tool: "toolbar" } }, as: :json
+              params: {
+                content: "Desired",
+                page_url: "/race",
+                metadata: { tool: "toolbar" },
+                dirtyFields: %w[content page_url metadata],
+                baseRevision: 0
+              }, as: :json
           end
         end
       end

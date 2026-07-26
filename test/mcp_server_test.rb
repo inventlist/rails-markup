@@ -412,6 +412,15 @@ class McpServerTest < Minitest::Test
     assert_empty unsubscribed
   end
 
+  def test_watch_returns_an_immediate_unsupported_error_for_http_proxy_store
+    @store = RailsMarkup::HttpStoreProxy.new
+
+    response = call_tool_response("rails_markup_watch")
+
+    assert_equal true, response.dig("result", "isError")
+    assert_match(/watch.*unsupported.*proxy|proxy.*watch.*unsupported/i, response.dig("result", "content", 0, "text"))
+  end
+
   def test_legacy_fetch_production_injects_environment
     result = call_tool("rails_markup_fetch_production")
     assert_match(/No production URL/, result["error"])

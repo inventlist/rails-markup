@@ -192,7 +192,7 @@ test("delete durably removes UI state and replaces the upsert before scheduled w
   const stored = harness.storageDocument();
   assert.deepEqual(stored.annotations, []);
   assert.deepEqual(stored.outbox[clientId], {
-    type: "delete", clientId, revision: 5, syncState: "pending"
+    type: "delete", clientId, revision: 5, baseRevision: 0, syncState: "pending"
   });
   assert.equal(harness.window.document.querySelector('[data-card-id="7"]'), null);
   assert.equal(harness.window.document.querySelector('[data-pin-id="7"]'), null);
@@ -242,7 +242,11 @@ test("failed delete remains visible and retryable after its card is gone", async
   assert.match(harness.window.document.getElementById("rm-panel-list").textContent, /Delete failed/);
   harness.toolbar._retrySync(clientId);
 
-  assert.deepEqual(harness.storageDocument().outbox[clientId], { ...tombstone, syncState: "pending" });
+  assert.deepEqual(harness.storageDocument().outbox[clientId], {
+    ...tombstone,
+    baseRevision: 0,
+    syncState: "pending"
+  });
   await harness.advanceTimersBy(0);
   assert.equal(flushes, 1);
 });

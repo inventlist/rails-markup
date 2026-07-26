@@ -79,7 +79,11 @@ module RailsMarkup
       data
     end
 
-    # Watch not supported via HTTP proxy — return empty after timeout
+    def supports_subscriptions?
+      false
+    end
+
+    # Watch is rejected by McpServer before subscription in proxy mode.
     def subscribe(_session_id = nil, &_block)
       nil
     end

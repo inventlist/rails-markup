@@ -411,6 +411,50 @@ module RailsMarkup
       annotation = Annotation.new(content: "Test", page_url: "/test", client_uuid: client_uuid)
 
       assert_equal client_uuid, annotation.as_api_json[:clientId]
+      assert_equal 0, annotation.as_api_json[:revision]
+    end
+
+    test "browser state applies only dirty fields and increments revision" do
+      annotation = Annotation.create!(
+        content: "Before",
+        page_url: "/before",
+        severity: "suggestion",
+        metadata: { "author" => "Server", "tool" => "old" },
+        revision: 4
+      )
+
+      annotation.apply_browser_state(
+        {
+          "content" => "After",
+          "page_url" => "/stale",
+          "severity" => "blocking",
+          "metadata" => { "tool" => "new" }
+        },
+        dirty_fields: %w[content metadata],
+        base_revision: 4
+      )
+
+      assert_equal "After", annotation.content
+      assert_equal "/before", annotation.page_url
+      assert_equal "suggestion", annotation.severity
+      assert_equal({ "author" => "Server", "tool" => "new" }, annotation.metadata)
+      assert_equal 5, annotation.revision
+    end
+
+    test "browser state rejects a stale base revision without applying fields" do
+      annotation = Annotation.create!(content: "Current", page_url: "/current", revision: 3)
+
+      assert_raises(Annotation::RevisionConflict) do
+        annotation.apply_browser_state(
+          { "content" => "Stale", "severity" => "blocking" },
+          dirty_fields: %w[content severity],
+          base_revision: 2
+        )
+      end
+
+      assert_equal "Current", annotation.content
+      assert_equal "suggestion", annotation.severity
+      assert_equal 3, annotation.revision
     end
 
     test "as_api_json authorName is nil when no author" do

@@ -69,6 +69,7 @@ function serverRepresentation(annotation, overrides = {}) {
     thread: [],
     createdAt: "2026-07-20T00:00:00Z",
     updatedAt: "2026-07-20T00:00:01Z",
+    revision: annotation.serverRevision ?? 1,
     ...overrides
   };
 }
@@ -104,12 +105,62 @@ test("flush is single-flight and sends entries serially with UUID PUT", async (t
   assert.equal(fetch.calls.length, 1);
   assert.equal(fetch.calls[0].url, "/feedback/api/annotations/" + firstId);
   assert.equal(fetch.calls[0].options.method, "PUT");
+  assert.equal(JSON.parse(fetch.calls[0].options.body).baseRevision, 0);
 
   first.respondWith(serverRepresentation(one));
   await nextTurn();
   assert.equal(fetch.calls.length, 2);
   second.respondWith(serverRepresentation(two));
   await left;
+  assert.deepEqual(JSON.parse(JSON.stringify(harness.toolbar.outbox)), {});
+});
+
+test("409 conflict re-pulls current state and retries dirty fields from the new base revision", async (t) => {
+  const annotation = localAnnotation(firstId, { serverId: "101", serverRevision: 1 });
+  const entry = upsertEntry(annotation, { baseRevision: 1 });
+  const fetch = createFakeFetch();
+  fetch.respondWith({
+    error: "revision conflict",
+    annotation: serverRepresentation(annotation, {
+      content: "Concurrent server edit",
+      severity: "suggestion",
+      revision: 2,
+      updatedAt: "2026-07-20T00:00:02Z"
+    })
+  }, { status: 409 });
+  fetch.respondWith([
+    serverRepresentation(annotation, {
+      content: "Concurrent server edit",
+      severity: "suggestion",
+      revision: 2,
+      updatedAt: "2026-07-20T00:00:02Z"
+    })
+  ]);
+  fetch.respondWith(serverRepresentation(annotation, {
+    content: "Concurrent server edit",
+    severity: "important",
+    revision: 3,
+    updatedAt: "2026-07-20T00:00:03Z"
+  }));
+  annotation.comment = "Concurrent server edit";
+  annotation.severity = "important";
+  annotation.dirtyFields = ["severity"];
+  entry.annotation.content = annotation.comment;
+  entry.annotation.severity = annotation.severity;
+  entry.dirtyFields = ["severity"];
+  const harness = flushHarness({ annotations: [annotation], outbox: { [firstId]: entry }, fetch });
+  t.after(() => harness.reset());
+
+  await harness.toolbar._flushOutbox();
+
+  assert.equal(fetch.calls.length, 3);
+  assert.match(fetch.calls[1].url, /annotations\?page_url=/);
+  const retryBody = JSON.parse(fetch.calls[2].options.body);
+  assert.equal(retryBody.baseRevision, 2);
+  assert.deepEqual(retryBody.dirtyFields, ["severity"]);
+  assert.equal(harness.toolbar.annotations[0].comment, "Concurrent server edit");
+  assert.equal(harness.toolbar.annotations[0].severity, "important");
+  assert.equal(harness.toolbar.annotations[0].serverRevision, 3);
   assert.deepEqual(JSON.parse(JSON.stringify(harness.toolbar.outbox)), {});
 });
 
@@ -231,7 +282,9 @@ test("DELETE 204 clears only the exact current tombstone without parsing JSON", 
 
   await harness.toolbar._flushOutbox();
   assert.equal(fetch.calls[0].options.method, "DELETE");
-  assert.deepEqual(JSON.parse(JSON.stringify(harness.toolbar.outbox)), { [secondId]: other });
+  assert.deepEqual(JSON.parse(JSON.stringify(harness.toolbar.outbox)), {
+    [secondId]: { ...other, baseRevision: 0 }
+  });
 });
 
 test("DELETE accepts any successful response without requiring a representation", async (t) => {
@@ -355,7 +408,7 @@ test("auth, redirects, and successful HTML stop flushing and expose unavailable 
 });
 
 test("terminal client errors mark upserts and tombstones failed for manual retry", async (t) => {
-  for (const status of [400, 404, 405, 409, 410, 415, 422]) {
+  for (const status of [400, 404, 405, 410, 415, 422]) {
     const annotation = localAnnotation();
     const fetch = createFakeFetch();
     fetch.respondWith({ error: "terminal" }, { status });

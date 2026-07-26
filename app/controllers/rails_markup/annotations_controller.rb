@@ -59,23 +59,29 @@ module RailsMarkup
 
       dirty_fields = normalized_dirty_fields
       return render_invalid_dirty_fields unless dirty_fields
+      base_revision = normalized_base_revision
+      return render_invalid_base_revision unless base_revision
 
       attributes = browser_attributes
       return render_invalid_status if dirty_fields.include?("status") && !Annotation::STATUSES.include?(attributes["status"])
 
       annotation = Annotation.find_or_initialize_by(client_uuid: client_uuid)
       created = annotation.new_record?
-      apply_desired_state(annotation, attributes, dirty_fields)
-      annotation.save!
+      save_browser_state!(annotation, attributes, dirty_fields, base_revision)
       fire_create_callback(annotation) if created
       render json: annotation.as_api_json
+    rescue Annotation::RevisionConflict => error
+      render_revision_conflict(error)
     rescue ActiveRecord::RecordInvalid => error
       render json: { errors: error.record.errors.full_messages }, status: :unprocessable_entity
     rescue ActiveRecord::RecordNotUnique
       annotation = Annotation.find_by!(client_uuid: client_uuid)
-      apply_desired_state(annotation, attributes, dirty_fields)
-      annotation.save!
-      render json: annotation.as_api_json
+      begin
+        save_browser_state!(annotation, attributes, dirty_fields, base_revision)
+        render json: annotation.as_api_json
+      rescue Annotation::RevisionConflict => error
+        render_revision_conflict(error)
+      end
     end
 
     # DELETE /feedback/api/annotations/:client_uuid
@@ -183,9 +189,25 @@ module RailsMarkup
       permitted.to_h.stringify_keys
     end
 
-    def apply_desired_state(annotation, attributes, dirty_fields)
-      assign_current_user(annotation) if annotation.new_record?
-      annotation.apply_browser_state(attributes, dirty_fields: dirty_fields)
+    def save_browser_state!(annotation, attributes, dirty_fields, base_revision)
+      if annotation.new_record?
+        assign_current_user(annotation)
+        annotation.apply_browser_state(
+          attributes,
+          dirty_fields: dirty_fields,
+          base_revision: base_revision
+        )
+        annotation.save!
+      else
+        annotation.with_lock do
+          annotation.apply_browser_state(
+            attributes,
+            dirty_fields: dirty_fields,
+            base_revision: base_revision
+          )
+          annotation.save!
+        end
+      end
     end
 
     def normalized_route_uuid
@@ -199,6 +221,11 @@ module RailsMarkup
 
       fields = fields.map { |field| DIRTY_FIELD_ALIASES.fetch(field.to_s, field.to_s) }
       fields if (fields - ALLOWED_DIRTY_FIELDS).empty?
+    end
+
+    def normalized_base_revision
+      revision = params[:baseRevision]
+      revision if revision.is_a?(Integer) && revision >= 0
     end
 
     def client_supplied_author?
@@ -224,6 +251,17 @@ module RailsMarkup
 
     def render_invalid_status
       render json: { error: "invalid status" }, status: :unprocessable_entity
+    end
+
+    def render_invalid_base_revision
+      render json: { error: "base revision must be a non-negative integer" }, status: :unprocessable_entity
+    end
+
+    def render_revision_conflict(error)
+      render json: {
+        error: "revision conflict",
+        annotation: error.annotation.as_api_json
+      }, status: :conflict
     end
 
     def normalize_target(target)

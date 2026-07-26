@@ -39,11 +39,10 @@ test("page identity and server page_url include pathname and search", async (t) 
   assert.notEqual(harness.toolbar._pageStorageKey(), other.toolbar._pageStorageKey());
 });
 
-test("storage is isolated by endpoint and ignores old unnamespaced data", (t) => {
+test("namespaced storage remains isolated by endpoint", (t) => {
   const alphaKey = "rm-annotations:%2Falpha%2Fapi";
   const betaKey = "rm-annotations:%2Fbeta%2Fapi";
   const storage = {
-    "rm-annotations": { annotations: [{ id: 1, comment: "Previous user" }], nextId: 2 },
     [alphaKey]: { annotations: [{ id: 2, clientId: uuidA, serverId: 10, comment: "Alpha" }], nextId: 3, outbox: {} },
     [betaKey]: { annotations: [{ id: 3, clientId: uuidB, serverId: 11, comment: "Beta" }], nextId: 4, outbox: {} }
   };
@@ -63,8 +62,6 @@ test("storage is isolated by endpoint and ignores old unnamespaced data", (t) =>
 
   assert.deepEqual(Array.from(alpha.toolbar.annotations, annotation => annotation.comment), ["Alpha"]);
   assert.deepEqual(Array.from(beta.toolbar.annotations, annotation => annotation.comment), ["Beta"]);
-  assert.notEqual(alpha.window.localStorage.getItem("rm-annotations"), null);
-  assert.notEqual(beta.window.localStorage.getItem("rm-annotations"), null);
 });
 
 test("legacy records gain sync fields and only unmapped records enter the outbox", (t) => {
@@ -123,6 +120,7 @@ test("an existing mapping or outbox is not requeued or overwritten", (t) => {
       ...existingEntry,
       clientId: uuidA,
       revision: 0,
+      baseRevision: 0,
       syncState: "pending"
     }
   });
@@ -211,6 +209,61 @@ test("legacy per-page migration preserves records with colliding local IDs", (t)
   assert.equal(Object.keys(harness.toolbar.outbox).length, 3);
   assert.equal(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:/one"), null);
   assert.equal(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:/two"), null);
+});
+
+test("pre-1.3 bare annotations and outbox migrate into the current endpoint namespace once", (t) => {
+  const legacyOutbox = {
+    type: "upsert",
+    annotation: {
+      clientId: uuidA,
+      page_url: "/legacy",
+      content: "Pending offline edit",
+      intent: "change",
+      severity: "important",
+      target: { selector: "main" }
+    },
+    dirtyFields: ["content", "severity"]
+  };
+  const harness = createToolbarHarness({
+    uuids: [uuidB],
+    storage: {
+      "rm-annotations": {
+        annotations: [{
+          id: 1,
+          clientId: uuidA,
+          comment: "Pending offline edit",
+          pathname: "/legacy",
+          intent: "change",
+          severity: "important"
+        }],
+        nextId: 2,
+        outbox: { [uuidA]: legacyOutbox }
+      },
+      "rm-annotations:/page": {
+        annotations: [{ id: 1, comment: "Old page annotation", pathname: "/page" }],
+        nextId: 2
+      }
+    }
+  });
+  t.after(() => harness.reset());
+
+  harness.toolbar._loadFromStorage();
+
+  assert.deepEqual(
+    Array.from(harness.toolbar.annotations, annotation => annotation.comment).sort(),
+    ["Old page annotation", "Pending offline edit"]
+  );
+  assert.equal(harness.toolbar.outbox[uuidA].clientId, uuidA);
+  assert.equal(harness.toolbar.outbox[uuidA].revision, 0);
+  assert.equal(harness.toolbar.outbox[uuidA].syncState, "pending");
+  assert.deepEqual(Array.from(harness.toolbar.outbox[uuidA].dirtyFields), ["content", "severity"]);
+  assert.ok(harness.toolbar.outbox[uuidB]);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations"), null);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations:/page"), null);
+  assert.equal(harness.storageDocument().annotations.length, 2);
+
+  harness.toolbar._loadFromStorage();
+  assert.equal(harness.toolbar.annotations.length, 2);
 });
 
 test("legacy migration preserves malformed and unrecognized prefixed keys", (t) => {

@@ -714,6 +714,7 @@
         id: this.nextId,
         clientId: this._newClientId(),
         serverId: null,
+        serverRevision: 0,
         syncState: "pending",
         serverUpdatedAt: null,
         dirtyFields: [],
@@ -1077,12 +1078,16 @@
     _queueLocalMutation(type, annotation, dirtyFields) {
       const currentEntry = this.outbox[annotation.clientId];
       const revision = Math.max(annotation.revision || 0, currentEntry?.revision || 0) + 1;
+      const baseRevision = Number.isInteger(currentEntry?.baseRevision)
+        ? currentEntry.baseRevision
+        : (Number.isInteger(annotation.serverRevision) ? annotation.serverRevision : 0);
 
       if (type === "delete") {
         this.outbox[annotation.clientId] = {
           type: "delete",
           clientId: annotation.clientId,
           revision,
+          baseRevision,
           syncState: "pending"
         };
       } else {
@@ -1094,6 +1099,7 @@
           type: "upsert",
           clientId: annotation.clientId,
           revision,
+          baseRevision,
           syncState: "pending",
           annotation: this._desiredState(annotation),
           dirtyFields: annotation.dirtyFields.slice()
@@ -1208,6 +1214,15 @@
           this._markSyncFailed(snapshot);
           continue;
         }
+        if (result.kind === "conflict") {
+          const pulled = await this._pullAnnotations();
+          if (pulled && this.outbox[clientId]) {
+            clientIds.push(clientId);
+            continue;
+          }
+          this._scheduleSyncRetry();
+          break;
+        }
         if (result.kind === "malformed") {
           if (!this._outboxEntryMatches(snapshot)) {
             clientIds.push(clientId);
@@ -1236,7 +1251,10 @@
         signal: AbortSignal.timeout(5000)
       };
       if (snapshot.type === "upsert") {
-        options.body = JSON.stringify(Object.assign({}, snapshot.annotation, { dirtyFields: snapshot.dirtyFields || [] }));
+        options.body = JSON.stringify(Object.assign({}, snapshot.annotation, {
+          dirtyFields: snapshot.dirtyFields || [],
+          baseRevision: Number.isInteger(snapshot.baseRevision) ? snapshot.baseRevision : 0
+        }));
       }
 
       const response = await fetch(request.url, options);
@@ -1274,6 +1292,7 @@
       if ([408, 425, 429].includes(status) || status >= 500) {
         return { kind: "retryable", retryAfter: this._retryAfterDelay(response) };
       }
+      if (status === 409 && snapshot.type === "upsert") return { kind: "conflict" };
       if (status >= 400) return { kind: "terminal" };
       if (!response.ok) return { kind: "retryable" };
       if (snapshot.type === "delete") return { kind: "success", data: null };
@@ -1297,7 +1316,7 @@
       const required = [
         "id", "clientId", "userId", "authorName", "content", "intent", "severity",
         "status", "selectedText", "pageUrl", "target", "metadata", "thread",
-        "createdAt", "updatedAt"
+        "createdAt", "updatedAt", "revision"
       ];
       if (!required.every(key => Object.prototype.hasOwnProperty.call(data, key))) return false;
       if (typeof data.id !== "string" || data.id.length === 0) return false;
@@ -1313,6 +1332,7 @@
       if (!this._plainObject(data.target) || !this._plainObject(data.metadata)) return false;
       if (!Array.isArray(data.thread)) return false;
       if (!this._validServerTimestamp(data.createdAt) || !this._validServerTimestamp(data.updatedAt)) return false;
+      if (!Number.isInteger(data.revision) || data.revision < 0) return false;
       return true;
     },
 
@@ -1346,6 +1366,7 @@
         return;
       }
       annotation.serverId = server.id;
+      annotation.serverRevision = server.revision;
       annotation.userId = server.userId;
       annotation.authorName = server.authorName;
       annotation.createdAt = server.createdAt;
@@ -1447,8 +1468,6 @@
 
     _loadFromStorage() {
       try {
-        // Old unnamespaced keys are intentionally not read because they may belong
-        // to another user or toolbar mount on the same origin.
         let raw = localStorage.getItem(this._storageKey());
         if (raw) {
           const data = JSON.parse(raw);
@@ -1460,14 +1479,65 @@
             ? data.legacyMigrations
             : {};
         }
-        // Migrate any old per-page annotations into global store
-        const migratedKeys = this._migratePageAnnotations();
+        // Pre-1.3 storage had no endpoint identity. The first configured endpoint
+        // to load on this origin claims it once; successful consolidation removes
+        // the source keys so another endpoint cannot import the same data later.
+        const migratedKeys = this._migrateUnnamespacedStorage();
+        migratedKeys.push(...this._migratePageAnnotations());
         this._normalizeStoredState();
         this._recordLegacyMigrations();
         if (this._saveToStorage()) this._cleanupMigratedKeys(migratedKeys);
         this._rebuildList();
         this._updateCount();
       } catch (e) { console.warn("[rails-markup] load failed:", e); }
+    },
+
+    _migrateUnnamespacedStorage() {
+      const sourceKeys = [];
+      for (let index = 0; index < localStorage.length; index++) {
+        const key = localStorage.key(index);
+        if (key === "rm-annotations" || (key && key.startsWith("rm-annotations:/"))) sourceKeys.push(key);
+      }
+
+      const migratedKeys = [];
+      const legacyAnnotations = [];
+      const legacyOutbox = {};
+      const consolidatedClientIds = new Set(
+        this.annotations.map(annotation => annotation.clientId).filter(clientId => this._validClientId(clientId))
+      );
+      sourceKeys.forEach(key => {
+        try {
+          const data = JSON.parse(localStorage.getItem(key));
+          if (!this._plainObject(data)) return;
+          const hasAnnotations = Array.isArray(data.annotations);
+          const hasOutbox = key === "rm-annotations" && this._plainObject(data.outbox);
+          if (!hasAnnotations && !hasOutbox) return;
+
+          if (hasAnnotations) {
+            data.annotations.forEach((annotation, index) => {
+              if (!this._plainObject(annotation)) return;
+              const fingerprint = this._legacyMigrationFingerprint(key, index, annotation);
+              const migratedClientId = this.legacyMigrations[fingerprint];
+              if (this._validClientId(migratedClientId) && consolidatedClientIds.has(migratedClientId)) return;
+              if (this._validClientId(migratedClientId)) annotation.clientId = migratedClientId;
+              if (this._validClientId(annotation.clientId) && consolidatedClientIds.has(annotation.clientId)) return;
+              Object.defineProperty(annotation, "_legacyMigrationFingerprint", {
+                configurable: true,
+                value: fingerprint
+              });
+              legacyAnnotations.push(annotation);
+              if (this._validClientId(annotation.clientId)) consolidatedClientIds.add(annotation.clientId);
+            });
+          }
+          if (hasOutbox) Object.assign(legacyOutbox, data.outbox);
+          if (Number.isInteger(data.nextId) && data.nextId > this.nextId) this.nextId = data.nextId;
+          migratedKeys.push(key);
+        } catch {}
+      });
+
+      this.annotations = legacyAnnotations.concat(this.annotations);
+      this.outbox = Object.assign({}, legacyOutbox, this.outbox);
+      return migratedKeys;
     },
 
     _migratePageAnnotations() {
@@ -1542,6 +1612,11 @@
         }
         if (annotation.serverId == null) annotation.serverId = annotation.server_id ?? null;
         if (annotation.serverUpdatedAt == null) annotation.serverUpdatedAt = annotation.server_updated_at ?? null;
+        if (!Number.isInteger(annotation.serverRevision) || annotation.serverRevision < 0) {
+          annotation.serverRevision = Number.isInteger(annotation.server_revision) && annotation.server_revision >= 0
+            ? annotation.server_revision
+            : 0;
+        }
         if (!Array.isArray(annotation.dirtyFields)) annotation.dirtyFields = [];
         annotation.pageUrl = annotation.pageUrl || annotation.pathname || this._pageUrl();
         annotation.pathname = annotation.pageUrl;
@@ -1576,6 +1651,7 @@
             type: "upsert",
             clientId: annotation.clientId,
             revision: annotation.revision,
+            baseRevision: annotation.serverRevision,
             syncState: "pending",
             annotation: this._desiredState(annotation),
             dirtyFields: annotation.dirtyFields.slice()
@@ -1606,10 +1682,17 @@
         const annotation = this.annotations.find(record => record.clientId === clientId);
         const candidateRevision = Number.isInteger(candidate.revision) && candidate.revision >= 0 ? candidate.revision : 0;
         const annotationRevision = Number.isInteger(annotation?.revision) && annotation.revision >= 0 ? annotation.revision : 0;
+        const candidateBaseRevision = Number.isInteger(candidate.baseRevision) && candidate.baseRevision >= 0
+          ? candidate.baseRevision
+          : 0;
+        const annotationBaseRevision = Number.isInteger(annotation?.serverRevision) && annotation.serverRevision >= 0
+          ? annotation.serverRevision
+          : 0;
         const envelope = Object.assign({}, candidate, {
           type,
           clientId,
           revision: Math.max(candidateRevision, annotationRevision),
+          baseRevision: Math.max(candidateBaseRevision, annotationBaseRevision),
           syncState: candidate.syncState === "failed" ? "failed" : "pending"
         });
 
@@ -1823,6 +1906,7 @@
           if (!annotation) return;
           entry.annotation = this._desiredState(annotation);
           entry.dirtyFields = (annotation.dirtyFields || []).slice();
+          entry.baseRevision = Number.isInteger(annotation.serverRevision) ? annotation.serverRevision : 0;
         });
       });
       if (!committed) return false;
@@ -1856,6 +1940,7 @@
         annotation.pathname = server.pageUrl;
       }
       annotation.serverId = server.id;
+      annotation.serverRevision = server.revision;
       annotation.userId = server.userId;
       annotation.authorName = server.authorName;
       annotation.createdAt = server.createdAt;
@@ -1871,6 +1956,7 @@
         id: null,
         clientId: server.clientId,
         serverId: server.id,
+        serverRevision: server.revision,
         userId: server.userId,
         authorName: server.authorName,
         syncState: "synced",
@@ -1893,6 +1979,9 @@
     },
 
     _serverRepresentationIsStale(annotation, server) {
+      if (Number.isInteger(annotation.serverRevision) && Number.isInteger(server.revision)) {
+        return server.revision < annotation.serverRevision;
+      }
       const localTimestamp = Date.parse(annotation.serverUpdatedAt || "");
       const serverTimestamp = Date.parse(server.updatedAt || "");
       return Number.isFinite(localTimestamp) && Number.isFinite(serverTimestamp) && serverTimestamp < localTimestamp;

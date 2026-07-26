@@ -91,6 +91,7 @@ class InstallGeneratorTest < ActiveSupport::TestCase
     assert_match(/metadata/, content)
     assert_match(/client_uuid/, content)
     assert_match(/client_uuid, limit: 64, null: false/, content)
+    assert_match(/revision, null: false, default: 0/, content)
     assert_match(/unique: true/, content)
   end
 

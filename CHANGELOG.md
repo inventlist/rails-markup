@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-07-26
+
+Third-round audit hardening: concurrency, credential provenance, and a safe upgrade path for the browser sync protocol.
+
+**Upgrade note:** this release adds a `revision` column to the annotations table. Run `rails db:migrate` after upgrading (the engine ships the migration). The browser toolbar now sends a `baseRevision` and handles `409 Conflict` by re-pulling; the bundled toolbar and server upgrade together.
+
+### Security
+
+- **CLI binds a production URL, token, and mount path to a single config scope** (credential provenance), replacing the per-key cross-scope merge from 1.3.0 that could pair a repo-local URL with a global token. A local dev-only config still doesn't shadow global production credentials.
+- **A blank `api_token` now disables the external API** instead of authenticating every request (`secure_compare("", "")` returned true).
+- **Standalone store CORS** reflects only validated loopback request origins, so a browser app on `localhost:3000` can talk to the store on `4747` (and non-loopback origins get no allow-origin header).
+
+### Fixed
+
+- **Optimistic concurrency on the browser upsert:** the full-state PUT now applies only the client's declared `dirtyFields` and checks `baseRevision`, returning `409` (with the current record) instead of clobbering a concurrent edit; the server bumps `revision` on every applied change.
+- **SSE broadcast no longer holds the store mutex** during network writes — one slow subscriber can't block session creation, reads, or other subscribers.
+- **`acknowledge!` runs under the row lock**, so it can't reopen a concurrently resolved/dismissed record.
+- **localStorage upgrade migrates real pre-1.3 data:** the bare `rm-annotations` key and legacy `rm-annotations:/path` keys (annotations *and* pending outbox) are folded once into the endpoint-namespaced store and then cleared, instead of being ignored (which dropped locally-cached annotations and offline mutations).
+- **Standalone store bounds per-session memory** (per-session annotation count + aggregate byte cap, with clear `422`/`507` responses and basic field validation).
+- **MCP `watch` returns a clear "unsupported" error in proxy/mcp-only mode** instead of blocking stdio for 120s and returning nothing.
+- **Toolbar tears down on `turbo:before-cache`**, so Turbo's page cache can't restore a dead toolbar root that `init()` would skip re-binding.
+- **Install generator validates `--table-name`** against a safe SQL identifier, and the legacy toolbar-block upgrade regex now matches only the exact generated block.
+
 ## [1.3.0] - 2026-07-26
 
 Security & correctness hardening from a full second-round audit.

@@ -2,6 +2,8 @@
 
 require "webrick"
 require "json"
+require "ipaddr"
+require "uri"
 
 module RailsMarkup
   # HTTP server providing REST API + SSE for the browser-side annotation controller.
@@ -52,17 +54,17 @@ module RailsMarkup
     end
 
     def do_OPTIONS(req, res)
-      cors(res)
+      cors(req, res)
       res.status = 204
     end
 
     def do_GET(req, res)
-      cors(res)
+      cors(req, res)
       route(req, res)
     end
 
     def do_POST(req, res)
-      cors(res)
+      cors(req, res)
       route(req, res)
     end
 
@@ -161,6 +163,10 @@ module RailsMarkup
       return not_found(res) unless annotation
 
       json_response(res, @store.serialize_annotation(annotation), status: 201)
+    rescue Store::ValidationError => error
+      json_response(res, { error: error.message }, status: 422)
+    rescue Store::CapacityError => error
+      json_response(res, { error: error.message }, status: 507)
     end
 
     # --- SSE ---
@@ -173,8 +179,6 @@ module RailsMarkup
       res["Content-Type"] = "text/event-stream"
       res["Cache-Control"] = "no-cache"
       res["Connection"] = "keep-alive"
-      res["Access-Control-Allow-Origin"] = "*"
-
       res.chunked = true
       res.body = proc do |out|
         sub = @store.subscribe(session_id) do |data|
@@ -200,11 +204,26 @@ module RailsMarkup
 
     # --- Helpers ---
 
-    def cors(res)
-      port = @server[:Port] rescue 4747
-      res["Access-Control-Allow-Origin"]  = "http://localhost:#{port}"
+    def cors(req, res)
+      origin = req["Origin"]
+      res["Access-Control-Allow-Origin"] = origin if loopback_origin?(origin)
       res["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
       res["Access-Control-Allow-Headers"] = "Content-Type"
+      res["Vary"] = "Origin"
+    end
+
+    def loopback_origin?(origin)
+      return false unless origin.is_a?(String)
+
+      uri = URI.parse(origin)
+      return false unless %w[http https].include?(uri.scheme)
+      return false if uri.host.nil? || uri.userinfo || uri.query || uri.fragment
+      return false unless uri.path.empty?
+      return true if uri.host.casecmp?("localhost")
+
+      IPAddr.new(uri.host).loopback?
+    rescue URI::InvalidURIError, IPAddr::InvalidAddressError
+      false
     end
 
     def json_response(res, data, status: 200)

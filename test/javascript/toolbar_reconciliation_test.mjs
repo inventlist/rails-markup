@@ -14,6 +14,7 @@ function localAnnotation(clientId = localId, overrides = {}) {
     id: 1,
     clientId,
     serverId: "101",
+    serverRevision: 1,
     userId: 7,
     authorName: "Old owner",
     syncState: "synced",
@@ -53,6 +54,7 @@ function serverRepresentation(clientId = localId, overrides = {}) {
     thread: [{ role: "agent", message: "Server reply" }],
     createdAt: "2026-07-20T00:00:00Z",
     updatedAt: "2026-07-20T00:00:02Z",
+    revision: 2,
     ...overrides
   };
 }
@@ -62,6 +64,7 @@ function upsertEntry(annotation, dirtyFields = annotation.dirtyFields) {
     type: "upsert",
     clientId: annotation.clientId,
     revision: annotation.revision,
+    baseRevision: annotation.serverRevision,
     syncState: "pending",
     annotation: {
       clientId: annotation.clientId,
@@ -269,10 +272,15 @@ test("stale server records and stale PUT responses cannot overwrite newer reconc
     comment: "Newer server value",
     status: "resolved",
     thread: [{ role: "agent", message: "Newest" }],
-    serverUpdatedAt: "2026-07-20T00:00:05Z"
+    serverUpdatedAt: "2026-07-20T00:00:05Z",
+    serverRevision: 3
   });
   const fetch = createFakeFetch();
-  fetch.respondWith([serverRepresentation(localId, { content: "Stale pull", updatedAt: "2026-07-20T00:00:04Z" })]);
+  fetch.respondWith([serverRepresentation(localId, {
+    content: "Stale pull",
+    updatedAt: "2026-07-20T00:00:04Z",
+    revision: 2
+  })]);
   const harness = reconciliationHarness({ annotations: [newer], fetch });
   t.after(() => harness.reset());
 
@@ -284,7 +292,11 @@ test("stale server records and stale PUT responses cannot overwrite newer reconc
   harness.toolbar.annotations[0].syncState = "pending";
   harness.toolbar._queueLocalMutation("upsert", harness.toolbar.annotations[0], ["content"]);
   harness.toolbar.serverOnline = true;
-  fetch.respondWith(serverRepresentation(localId, { content: "Stale PUT", updatedAt: "2026-07-20T00:00:03Z" }));
+  fetch.respondWith(serverRepresentation(localId, {
+    content: "Stale PUT",
+    updatedAt: "2026-07-20T00:00:03Z",
+    revision: 2
+  }));
   await harness.toolbar._flushOutbox();
   assert.equal(harness.toolbar.annotations[0].comment, "Newer server value");
   assert.equal(harness.toolbar.annotations[0].serverUpdatedAt, "2026-07-20T00:00:05Z");

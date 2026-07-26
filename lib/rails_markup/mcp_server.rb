@@ -589,6 +589,10 @@ module RailsMarkup
     # ── Watch mode ────────────────────────────────────────────
 
     def handle_watch(args)
+      unless @store.respond_to?(:supports_subscriptions?) && @store.supports_subscriptions?
+        raise ToolError, "Watch is unsupported in HTTP proxy (mcp-only) mode; poll with rails_markup_read instead."
+      end
+
       sub = nil
       timeout = [args["timeoutSeconds"]&.to_i || 120, 300].min
       batch_window = [args["batchWindowSeconds"]&.to_i || 10, 60].min

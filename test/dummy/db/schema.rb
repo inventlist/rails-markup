@@ -13,6 +13,7 @@ ActiveRecord::Schema.define do
     t.text :metadata, default: "{}"
     t.text :thread, default: "[]"
     t.string :client_uuid, null: false
+    t.integer :revision, null: false, default: 0
 
     t.timestamps
   end

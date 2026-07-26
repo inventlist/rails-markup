@@ -5,6 +5,15 @@ require "digest/sha1"
 
 module RailsMarkup
   class Annotation < ActiveRecord::Base
+    class RevisionConflict < StandardError
+      attr_reader :annotation
+
+      def initialize(annotation)
+        @annotation = annotation
+        super("annotation revision conflict")
+      end
+    end
+
     self.table_name = RailsMarkup.config.table_name
 
     INTENTS = %w[fix change question approve].freeze
@@ -99,10 +108,19 @@ module RailsMarkup
       metadata&.dig("author")
     end
 
-    def apply_browser_state(attributes, dirty_fields: [])
-      assign_attributes(attributes.slice(*BROWSER_ATTRIBUTES))
-      self.metadata = (metadata || {}).merge(attributes.fetch("metadata", {}).slice(*BROWSER_METADATA_KEYS))
-      self.status = attributes["status"] if dirty_fields.include?("status")
+    def apply_browser_state(attributes, dirty_fields:, base_revision:)
+      raise RevisionConflict, self unless base_revision == revision
+
+      dirty_fields.each do |field|
+        if BROWSER_ATTRIBUTES.include?(field)
+          public_send("#{field}=", attributes[field]) if attributes.key?(field)
+        elsif field == "metadata" && attributes.key?("metadata")
+          self.metadata = (metadata || {}).merge(attributes["metadata"].slice(*BROWSER_METADATA_KEYS))
+        elsif field == "status" && attributes.key?("status")
+          self.status = attributes["status"]
+        end
+      end
+      self.revision += 1 if changed?
       self
     end
 
@@ -114,7 +132,7 @@ module RailsMarkup
         return self if status == "acknowledged" # idempotent — re-acknowledging is a no-op
         raise "Cannot acknowledge a #{status} annotation" unless status == "pending"
 
-        update!(status: "acknowledged")
+        update!(status: "acknowledged", revision: revision + 1)
       end
       self
     end
@@ -127,7 +145,7 @@ module RailsMarkup
         raise "Cannot resolve a #{status} annotation" unless status.in?(%w[pending acknowledged])
 
         add_thread_entry(role: "agent", message: summary) if summary.present?
-        update!(status: "resolved")
+        update!(status: "resolved", revision: revision + 1)
       end
       self
     end
@@ -138,7 +156,7 @@ module RailsMarkup
         raise "Cannot dismiss a #{status} annotation" unless status.in?(%w[pending acknowledged])
 
         add_thread_entry(role: "agent", message: reason) if reason.present?
-        update!(status: "dismissed")
+        update!(status: "dismissed", revision: revision + 1)
       end
       self
     end
@@ -146,6 +164,7 @@ module RailsMarkup
     def add_reply!(message:, role: "agent")
       with_lock do
         add_thread_entry(role: role, message: message)
+        self.revision += 1
         save!
       end
       self
@@ -167,7 +186,8 @@ module RailsMarkup
         metadata: metadata,
         thread: thread,
         createdAt: created_at&.iso8601,
-        updatedAt: updated_at&.iso8601
+        updatedAt: updated_at&.iso8601,
+        revision: revision
       }
     end
 

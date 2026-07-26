@@ -18,6 +18,7 @@ class CreateRailsMarkupAnnotations < ActiveRecord::Migration<%= migration_versio
       t.send json_type, :metadata, default: {}
       t.send json_type, :thread, default: []
       t.string :client_uuid, limit: 64, null: false
+      t.integer :revision, null: false, default: 0
 
       t.timestamps
     end

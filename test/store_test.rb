@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "test_helper"
+require "timeout"
 
 class StoreTest < Minitest::Test
   def setup
@@ -202,6 +203,89 @@ class StoreTest < Minitest::Test
     @store.unsubscribe(sub)
     @store.create_annotation(session_id: session.id, target: "div", content: "test")
     assert_equal 0, events.size
+  end
+
+  def test_subscriber_callbacks_run_without_holding_the_store_mutex
+    session = @store.create_session(url: "http://example.com")
+    mutex_owned = nil
+    @store.subscribe(session.id) do
+      mutex_owned = @store.instance_variable_get(:@mutex).owned?
+    end
+
+    @store.create_annotation(session_id: session.id, target: "div", content: "test")
+
+    assert_equal false, mutex_owned
+  end
+
+  def test_slow_and_raising_subscribers_do_not_block_store_operations_and_are_cleaned_up
+    session = @store.create_session(url: "http://example.com")
+    entered = Queue.new
+    release = Queue.new
+    @store.subscribe(session.id) do
+      entered << true
+      release.pop
+    end
+    @store.subscribe(session.id) { raise "closed socket" }
+
+    notifying = Thread.new do
+      @store.create_annotation(session_id: session.id, target: "div", content: "slow")
+    end
+    entered.pop
+
+    Timeout.timeout(0.5) do
+      assert_same session, @store.get_session(session.id)
+      assert_equal 1, @store.list_sessions.length
+    end
+    release << true
+    notifying.join
+
+    assert_equal 1, @store.instance_variable_get(:@subscribers).length
+  end
+
+  def test_annotation_count_cap_rejects_excess_records_with_a_clear_error
+    store = RailsMarkup::Store.new(max_annotations_per_session: 2)
+    session = store.create_session(url: "http://example.com")
+    2.times { |index| store.create_annotation(session_id: session.id, target: "div", content: "note #{index}") }
+
+    error = assert_raises(RailsMarkup::Store::CapacityError) do
+      store.create_annotation(session_id: session.id, target: "div", content: "one too many")
+    end
+
+    assert_match(/annotation limit/i, error.message)
+    assert_equal 2, session.annotations.length
+  end
+
+  def test_annotation_aggregate_byte_cap_rejects_excess_payload
+    store = RailsMarkup::Store.new(max_annotation_bytes: 700)
+    first_session = store.create_session(url: "http://one.example.com")
+    second_session = store.create_session(url: "http://two.example.com")
+    store.create_annotation(session_id: first_session.id, target: "div", content: "a" * 200)
+
+    error = assert_raises(RailsMarkup::Store::CapacityError) do
+      store.create_annotation(session_id: second_session.id, target: "div", content: "b" * 600)
+    end
+
+    assert_match(/byte limit/i, error.message)
+    assert_equal 1, first_session.annotations.length
+    assert_empty second_session.annotations
+  end
+
+  def test_create_annotation_validates_basic_fields
+    session = @store.create_session(url: "http://example.com")
+    invalid_attributes = [
+      { target: "", content: "note" },
+      { target: "div", content: "" },
+      { target: "div", content: "note", intent: "invented" },
+      { target: "div", content: "note", severity: "catastrophic" },
+      { target: "div", content: "note", metadata: [] }
+    ]
+
+    invalid_attributes.each do |attributes|
+      assert_raises(RailsMarkup::Store::ValidationError) do
+        @store.create_annotation(session_id: session.id, **attributes)
+      end
+    end
+    assert_empty session.annotations
   end
 
   def test_session_count_is_hard_capped_even_when_all_are_fresh
