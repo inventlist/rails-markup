@@ -20,7 +20,7 @@ test("page identity and server page_url include pathname and search", async (t) 
   const harness = createToolbarHarness({ url: "https://example.test/products?status=open", fetch });
   t.after(() => harness.reset());
 
-  assert.equal(harness.toolbar._pageStorageKey(), "rm-annotations:/products?status=open");
+  assert.equal(harness.toolbar._pageStorageKey(), "rm-annotations:%2Ffeedback%2Fapi:/products?status=open");
   harness.toolbar.serverOnline = true;
   await harness.toolbar._pushToServer({
     id: 1,
@@ -39,11 +39,39 @@ test("page identity and server page_url include pathname and search", async (t) 
   assert.notEqual(harness.toolbar._pageStorageKey(), other.toolbar._pageStorageKey());
 });
 
+test("storage is isolated by endpoint and ignores old unnamespaced data", (t) => {
+  const alphaKey = "rm-annotations:%2Falpha%2Fapi";
+  const betaKey = "rm-annotations:%2Fbeta%2Fapi";
+  const storage = {
+    "rm-annotations": { annotations: [{ id: 1, comment: "Previous user" }], nextId: 2 },
+    [alphaKey]: { annotations: [{ id: 2, clientId: uuidA, serverId: 10, comment: "Alpha" }], nextId: 3, outbox: {} },
+    [betaKey]: { annotations: [{ id: 3, clientId: uuidB, serverId: 11, comment: "Beta" }], nextId: 4, outbox: {} }
+  };
+  const alpha = createToolbarHarness({ endpoint: "/alpha/api", storage });
+  const beta = createToolbarHarness({ endpoint: "/beta/api", storage });
+  t.after(() => {
+    alpha.reset();
+    beta.reset();
+  });
+
+  assert.equal(alpha.toolbar._storageKey(), alphaKey);
+  assert.equal(beta.toolbar._storageKey(), betaKey);
+  assert.notEqual(alpha.toolbar._storageKey(), beta.toolbar._storageKey());
+
+  alpha.toolbar._loadFromStorage();
+  beta.toolbar._loadFromStorage();
+
+  assert.deepEqual(Array.from(alpha.toolbar.annotations, annotation => annotation.comment), ["Alpha"]);
+  assert.deepEqual(Array.from(beta.toolbar.annotations, annotation => annotation.comment), ["Beta"]);
+  assert.notEqual(alpha.window.localStorage.getItem("rm-annotations"), null);
+  assert.notEqual(beta.window.localStorage.getItem("rm-annotations"), null);
+});
+
 test("legacy records gain sync fields and only unmapped records enter the outbox", (t) => {
   const harness = createToolbarHarness({
     uuids: [uuidA, uuidB],
     storage: {
-      "rm-annotations": {
+      "rm-annotations:%2Ffeedback%2Fapi": {
         annotations: [
           { id: 1, comment: "Local only", pathname: "/products", status: "pending" },
           { id: 2, serverId: 42, comment: "Already mapped", pathname: "/products", status: "resolved" }
@@ -76,7 +104,7 @@ test("an existing mapping or outbox is not requeued or overwritten", (t) => {
   const existingEntry = { type: "upsert", annotation: { clientId: uuidA, comment: "Newest intent" }, dirtyFields: ["content"] };
   const harness = createToolbarHarness({
     storage: {
-      "rm-annotations": {
+      "rm-annotations:%2Ffeedback%2Fapi": {
         annotations: [
           { id: 1, clientId: uuidA, comment: "Older local", pathname: "/", syncState: "pending" },
           { id: 2, clientId: uuidB, serverId: 9, comment: "Mapped", pathname: "/" }
@@ -90,7 +118,14 @@ test("an existing mapping or outbox is not requeued or overwritten", (t) => {
 
   harness.toolbar._loadFromStorage();
 
-  assert.deepEqual(JSON.parse(JSON.stringify(harness.toolbar.outbox)), { [uuidA]: existingEntry });
+  assert.deepEqual(JSON.parse(JSON.stringify(harness.toolbar.outbox)), {
+    [uuidA]: {
+      ...existingEntry,
+      clientId: uuidA,
+      revision: 0,
+      syncState: "pending"
+    }
+  });
 });
 
 test("invalid legacy client IDs are replaced and their outbox entries rekeyed", (t) => {
@@ -98,7 +133,7 @@ test("invalid legacy client IDs are replaced and their outbox entries rekeyed", 
   const harness = createToolbarHarness({
     uuids: [uuidA],
     storage: {
-      "rm-annotations": {
+      "rm-annotations:%2Ffeedback%2Fapi": {
         annotations: [{ id: 1, clientId: invalidClientId, comment: "Legacy", pathname: "/" }],
         nextId: 2,
         outbox: {
@@ -125,7 +160,7 @@ test("distinct records sharing an invalid client ID remain distinct queued upser
   const harness = createToolbarHarness({
     uuids: [uuidA, uuidB],
     storage: {
-      "rm-annotations": {
+      "rm-annotations:%2Ffeedback%2Fapi": {
         annotations: [
           { id: 1, clientId: invalidClientId, comment: "First record", pathname: "/" },
           { id: 2, clientId: invalidClientId, comment: "Second record", pathname: "/" }
@@ -162,9 +197,9 @@ test("legacy per-page migration preserves records with colliding local IDs", (t)
   const harness = createToolbarHarness({
     uuids: [uuidA, uuidB, "33333333-3333-4333-8333-333333333333"],
     storage: {
-      "rm-annotations": { annotations: [{ id: 1, comment: "Global", pathname: "/one" }], nextId: 1 },
-      "rm-annotations:/one": { annotations: [{ id: 1, comment: "Page one", pathname: "/one" }], nextId: 2 },
-      "rm-annotations:/two": { annotations: [{ id: 1, comment: "Page two", pathname: "/two" }], nextId: 2 }
+      "rm-annotations:%2Ffeedback%2Fapi": { annotations: [{ id: 1, comment: "Global", pathname: "/one" }], nextId: 1 },
+      "rm-annotations:%2Ffeedback%2Fapi:/one": { annotations: [{ id: 1, comment: "Page one", pathname: "/one" }], nextId: 2 },
+      "rm-annotations:%2Ffeedback%2Fapi:/two": { annotations: [{ id: 1, comment: "Page two", pathname: "/two" }], nextId: 2 }
     }
   });
   t.after(() => harness.reset());
@@ -174,34 +209,34 @@ test("legacy per-page migration preserves records with colliding local IDs", (t)
   assert.deepEqual(Array.from(harness.toolbar.annotations, (annotation) => annotation.comment).sort(), ["Global", "Page one", "Page two"]);
   assert.equal(new Set(harness.toolbar.annotations.map((annotation) => annotation.id)).size, 3);
   assert.equal(Object.keys(harness.toolbar.outbox).length, 3);
-  assert.equal(harness.window.localStorage.getItem("rm-annotations:/one"), null);
-  assert.equal(harness.window.localStorage.getItem("rm-annotations:/two"), null);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:/one"), null);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:/two"), null);
 });
 
 test("legacy migration preserves malformed and unrecognized prefixed keys", (t) => {
   const harness = createToolbarHarness({
     uuids: [uuidA],
     storage: {
-      "rm-annotations:recognized": { annotations: [{ id: 1, comment: "Migrated", pathname: "/recognized" }] },
-      "rm-annotations:malformed": "{not-json",
-      "rm-annotations:unrecognized": { annotations: "not-an-array" }
+      "rm-annotations:%2Ffeedback%2Fapi:recognized": { annotations: [{ id: 1, comment: "Migrated", pathname: "/recognized" }] },
+      "rm-annotations:%2Ffeedback%2Fapi:malformed": "{not-json",
+      "rm-annotations:%2Ffeedback%2Fapi:unrecognized": { annotations: "not-an-array" }
     }
   });
   t.after(() => harness.reset());
 
   harness.toolbar._loadFromStorage();
 
-  assert.equal(harness.window.localStorage.getItem("rm-annotations:recognized"), null);
-  assert.equal(harness.window.localStorage.getItem("rm-annotations:malformed"), "{not-json");
-  assert.notEqual(harness.window.localStorage.getItem("rm-annotations:unrecognized"), null);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:recognized"), null);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:malformed"), "{not-json");
+  assert.notEqual(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:unrecognized"), null);
 });
 
 test("legacy migration retains source keys when consolidated persistence fails", (t) => {
   const harness = createToolbarHarness({
     uuids: [uuidA],
     storage: {
-      "rm-annotations": { annotations: [], nextId: 1, outbox: {} },
-      "rm-annotations:/legacy": { annotations: [{ id: 1, comment: "Keep me", pathname: "/legacy" }] }
+      "rm-annotations:%2Ffeedback%2Fapi": { annotations: [], nextId: 1, outbox: {} },
+      "rm-annotations:%2Ffeedback%2Fapi:/legacy": { annotations: [{ id: 1, comment: "Keep me", pathname: "/legacy" }] }
     }
   });
   t.after(() => harness.reset());
@@ -209,7 +244,7 @@ test("legacy migration retains source keys when consolidated persistence fails",
 
   harness.toolbar._loadFromStorage();
 
-  assert.notEqual(harness.window.localStorage.getItem("rm-annotations:/legacy"), null);
+  assert.notEqual(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:/legacy"), null);
   assert.equal(harness.storageDocument().annotations.length, 0);
 });
 
@@ -217,24 +252,24 @@ test("legacy cleanup retries idempotently when one source key cannot be removed"
   const harness = createToolbarHarness({
     uuids: [uuidA, uuidB],
     storage: {
-      "rm-annotations": { annotations: [], nextId: 1, outbox: {} },
-      "rm-annotations:/one": { annotations: [{ id: 1, comment: "One", pathname: "/one" }] },
-      "rm-annotations:/two": { annotations: [{ id: 1, comment: "Two", pathname: "/two" }] }
+      "rm-annotations:%2Ffeedback%2Fapi": { annotations: [], nextId: 1, outbox: {} },
+      "rm-annotations:%2Ffeedback%2Fapi:/one": { annotations: [{ id: 1, comment: "One", pathname: "/one" }] },
+      "rm-annotations:%2Ffeedback%2Fapi:/two": { annotations: [{ id: 1, comment: "Two", pathname: "/two" }] }
     }
   });
   t.after(() => harness.reset());
-  harness.failNextStorageRemoval("rm-annotations:/one", new Error("remove denied"));
+  harness.failNextStorageRemoval("rm-annotations:%2Ffeedback%2Fapi:/one", new Error("remove denied"));
 
   harness.toolbar._loadFromStorage();
 
-  assert.notEqual(harness.window.localStorage.getItem("rm-annotations:/one"), null);
-  assert.equal(harness.window.localStorage.getItem("rm-annotations:/two"), null);
+  assert.notEqual(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:/one"), null);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:/two"), null);
   assert.equal(harness.toolbar.annotations.length, 2);
 
   harness.toolbar._loadFromStorage();
   harness.toolbar._loadFromStorage();
 
-  assert.equal(harness.window.localStorage.getItem("rm-annotations:/one"), null);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:/one"), null);
   assert.deepEqual(Array.from(harness.toolbar.annotations, annotation => annotation.comment).sort(), ["One", "Two"]);
   assert.deepEqual(Object.keys(harness.toolbar.outbox).sort(), [uuidA, uuidB]);
 });
@@ -243,12 +278,12 @@ test("retained legacy source cannot overwrite consolidated edits on cleanup retr
   const harness = createToolbarHarness({
     uuids: [uuidA],
     storage: {
-      "rm-annotations": { annotations: [], nextId: 1, outbox: {} },
-      "rm-annotations:/legacy": { annotations: [{ id: 1, comment: "Stale source", pathname: "/legacy" }] }
+      "rm-annotations:%2Ffeedback%2Fapi": { annotations: [], nextId: 1, outbox: {} },
+      "rm-annotations:%2Ffeedback%2Fapi:/legacy": { annotations: [{ id: 1, comment: "Stale source", pathname: "/legacy" }] }
     }
   });
   t.after(() => harness.reset());
-  harness.failNextStorageRemoval("rm-annotations:/legacy", new Error("remove denied"));
+  harness.failNextStorageRemoval("rm-annotations:%2Ffeedback%2Fapi:/legacy", new Error("remove denied"));
   harness.toolbar._loadFromStorage();
 
   harness.toolbar.annotations[0].comment = "Edited desired state";
@@ -256,7 +291,7 @@ test("retained legacy source cannot overwrite consolidated edits on cleanup retr
   harness.toolbar._saveToStorage();
   harness.toolbar._loadFromStorage();
 
-  assert.equal(harness.window.localStorage.getItem("rm-annotations:/legacy"), null);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations:%2Ffeedback%2Fapi:/legacy"), null);
   assert.equal(harness.toolbar.annotations.length, 1);
   assert.equal(harness.toolbar.annotations[0].comment, "Edited desired state");
   assert.equal(harness.toolbar.outbox[uuidA].annotation.content, "Edited desired state");
@@ -265,7 +300,7 @@ test("retained legacy source cannot overwrite consolidated edits on cleanup retr
 test("duplicate client IDs collapse to the deterministically newest local record", (t) => {
   const harness = createToolbarHarness({
     storage: {
-      "rm-annotations": {
+      "rm-annotations:%2Ffeedback%2Fapi": {
         annotations: [
           { id: 7, clientId: uuidA, comment: "old", updatedAt: "2026-01-01T00:00:00Z" },
           { id: 8, clientId: uuidA, comment: "new-first", updatedAt: "2026-02-01T00:00:00Z", serverUpdatedAt: "2026-02-02T00:00:00Z" },
@@ -290,7 +325,7 @@ test("duplicate client IDs collapse to the deterministically newest local record
 test("equal local update times use later array order instead of server time", (t) => {
   const harness = createToolbarHarness({
     storage: {
-      "rm-annotations": {
+      "rm-annotations:%2Ffeedback%2Fapi": {
         annotations: [
           { id: 1, clientId: uuidA, comment: "earlier array", updatedAt: "2026-03-01T00:00:00Z", serverUpdatedAt: "2026-04-01T00:00:00Z" },
           { id: 2, clientId: uuidA, comment: "later array", updatedAt: "2026-03-01T00:00:00Z", serverUpdatedAt: "2026-02-01T00:00:00Z" }
@@ -312,7 +347,7 @@ test("malformed persisted annotation collections reset to safe empty state", () 
   for (const malformedAnnotations of ["not-an-array", { unexpected: true }]) {
     const harness = createToolbarHarness({
       storage: {
-        "rm-annotations": { annotations: malformedAnnotations, nextId: 99, outbox: ["unsafe"] }
+        "rm-annotations:%2Ffeedback%2Fapi": { annotations: malformedAnnotations, nextId: 99, outbox: ["unsafe"] }
       }
     });
 
@@ -330,7 +365,7 @@ test("malformed persisted annotation collections reset to safe empty state", () 
 test("server-only records receive stable collision-free display IDs across reload", (t) => {
   const first = createToolbarHarness({
     storage: {
-      "rm-annotations": {
+      "rm-annotations:%2Ffeedback%2Fapi": {
         annotations: [
           { id: 5, clientId: uuidA, serverId: 10, comment: "Existing" },
           { clientId: uuidB, serverId: 11, comment: "Imported" }
@@ -348,7 +383,7 @@ test("server-only records receive stable collision-free display IDs across reloa
   assert.deepEqual(firstIds, [5, 6]);
   assert.equal(first.toolbar.nextId, 7);
 
-  const reloaded = createToolbarHarness({ storage: { "rm-annotations": persisted } });
+  const reloaded = createToolbarHarness({ storage: { "rm-annotations:%2Ffeedback%2Fapi": persisted } });
   t.after(() => reloaded.reset());
   reloaded.toolbar._loadFromStorage();
   assert.deepEqual(Array.from(reloaded.toolbar.annotations, (annotation) => annotation.id), firstIds);

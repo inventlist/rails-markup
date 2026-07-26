@@ -82,7 +82,7 @@ function reconciliationHarness({ annotations = [], outbox = {}, fetch = createFa
   const harness = createToolbarHarness({
     url: url || "https://example.test/products?open=1",
     fetch,
-    storage: { "rm-annotations": { annotations, nextId: 10, outbox } }
+    storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations, nextId: 10, outbox } }
   });
   harness.toolbar._loadFromStorage();
   harness.toolbar.serverOnline = true;

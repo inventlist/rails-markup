@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-07-26
+
+Security & correctness hardening from a full second-round audit.
+
+### Security
+
+- **Standalone HTTP store server binds to loopback (127.0.0.1) by default.** It is unauthenticated, so it no longer listens on all interfaces; use `bin/markup server --host 0.0.0.0` to deliberately expose it on the LAN.
+- **External API development auth is now configurable.** It still skips the token in development by default (so you can reach it from another device), but `config.require_api_token_in_development = true` locks it down on untrusted networks. This bypass allows unauthenticated reads and writes, now documented.
+- **CSV export neutralizes spreadsheet formula injection** — cells beginning `= + - @` or a control char are prefixed with `'`.
+- **CLI refuses to send the production bearer token over `http://`** — production URLs must use HTTPS.
+- **Standalone store enforces its session hard cap** even when all sessions are fresh (was unbounded).
+
+### Fixed
+
+- MCP env resolution merges configs per-key (local → global → codex) instead of returning the first non-empty config, so a local dev-only config no longer shadows global production credentials.
+- Thread mutations (`resolve!` / `dismiss!` / `add_reply!`) run under a row lock, preventing concurrent replies/resolutions from silently overwriting each other.
+- `page_url` column is `string(2048)` to match the model's length validation (the default 255 raised DB errors on PostgreSQL/MySQL for long URLs); index uses a MySQL-safe prefix.
+- Install generator upgrades a pre-1.2.3 public toolbar layout block to the admin gate on re-run instead of skipping it.
+- Toolbar suppresses press events (mousedown/touchstart) in annotation mode so host controls don't act before the click is blocked.
+- Toolbar tears down after a logout Turbo visit whose new body omits the (admin-gated) partial, instead of recreating itself and exposing cached annotations.
+- Browser localStorage is namespaced by endpoint, so different users/mounts on the same origin no longer leak or clobber each other's annotations; old unnamespaced data is ignored.
+- Legacy offline outbox entries are upgraded to the full sync envelope (top-level `clientId`/`revision`/`syncState`) before flush, fixing requests to `/annotations/undefined`.
+
 ## [1.2.4] - 2026-07-26
 
 ### Fixed

@@ -78,7 +78,7 @@ function flushHarness({ annotations, outbox, fetch = createFakeFetch(), online =
     url: "https://example.test/products?open=1",
     fetch,
     online,
-    storage: { "rm-annotations": { annotations, nextId: 3, outbox } }
+    storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations, nextId: 3, outbox } }
   });
   harness.toolbar._loadFromStorage();
   harness.toolbar.serverOnline = online;
@@ -111,6 +111,38 @@ test("flush is single-flight and sends entries serially with UUID PUT", async (t
   second.respondWith(serverRepresentation(two));
   await left;
   assert.deepEqual(JSON.parse(JSON.stringify(harness.toolbar.outbox)), {});
+});
+
+test("legacy outbox envelopes are completed from the nested UUID before flush", async (t) => {
+  const annotation = localAnnotation(firstId, { revision: 6 });
+  const legacyEntry = {
+    type: "upsert",
+    annotation: {
+      clientId: firstId,
+      page_url: annotation.pageUrl,
+      content: annotation.comment,
+      intent: annotation.intent,
+      severity: annotation.severity,
+      selected_text: annotation.selectedText,
+      target: annotation.element,
+      metadata: { tool: "rails-markup" },
+      status: annotation.status
+    },
+    dirtyFields: ["content"]
+  };
+  const fetch = createFakeFetch();
+  fetch.respondWith(serverRepresentation(annotation));
+  const harness = flushHarness({ annotations: [annotation], outbox: { [firstId]: legacyEntry }, fetch });
+  t.after(() => harness.reset());
+
+  assert.equal(harness.toolbar.outbox[firstId].clientId, firstId);
+  assert.equal(harness.toolbar.outbox[firstId].revision, 6);
+  assert.equal(harness.toolbar.outbox[firstId].syncState, "pending");
+
+  await harness.toolbar._flushOutbox();
+
+  assert.equal(fetch.calls[0].url, `/feedback/api/annotations/${firstId}`);
+  assert.equal(fetch.calls[0].options.method, "PUT");
 });
 
 test("health, online, and visibility work coalesce behind one health request and one flush", async (t) => {

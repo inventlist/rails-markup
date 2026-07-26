@@ -72,6 +72,7 @@ export function createToolbarHarness(options = {}) {
   });
 
   window.eval(toolbarSource);
+  window.RailsMarkupToolbar.endpoint = options.endpoint || "/feedback/api";
 
   const nextTimer = (target) => {
     const candidates = [
@@ -120,7 +121,7 @@ export function createToolbarHarness(options = {}) {
       nextStorageRemovalFailure = { key, error };
     },
     storageDocument() {
-      return JSON.parse(window.localStorage.getItem("rm-annotations"));
+      return JSON.parse(window.localStorage.getItem(window.RailsMarkupToolbar._storageKey()));
     },
     pendingIntervalCount() {
       return intervals.size;

@@ -96,7 +96,7 @@ test("create persists complete desired state and outbox before scheduled network
 
 test("content edit persists before scheduled work and queues only canonical browser fields", async (t) => {
   const annotation = serverBackedAnnotation();
-  const harness = createToolbarHarness({ storage: { "rm-annotations": { annotations: [annotation], nextId: 8, outbox: {} } } });
+  const harness = createToolbarHarness({ storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [annotation], nextId: 8, outbox: {} } } });
   t.after(() => harness.reset());
   injectToolbar(harness);
   harness.toolbar._loadFromStorage();
@@ -137,7 +137,7 @@ test("content edit persists before scheduled work and queues only canonical brow
 });
 
 test("status persists before scheduled work and coalesces with the current upsert", async (t) => {
-  const harness = createToolbarHarness({ storage: { "rm-annotations": { annotations: [serverBackedAnnotation()], nextId: 8, outbox: {} } } });
+  const harness = createToolbarHarness({ storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [serverBackedAnnotation()], nextId: 8, outbox: {} } } });
   t.after(() => harness.reset());
   injectToolbar(harness);
   harness.toolbar._loadFromStorage();
@@ -175,7 +175,7 @@ test("delete durably removes UI state and replaces the upsert before scheduled w
     type: "upsert", clientId, revision: 4, syncState: "pending",
     annotation: { clientId, page_url: "/products", content: "Before" }, dirtyFields: ["content"]
   };
-  const harness = createToolbarHarness({ storage: { "rm-annotations": { annotations: [annotation], nextId: 8, outbox: { [clientId]: upsert } } } });
+  const harness = createToolbarHarness({ storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [annotation], nextId: 8, outbox: { [clientId]: upsert } } } });
   t.after(() => harness.reset());
   injectToolbar(harness);
   harness.toolbar._loadFromStorage();
@@ -207,7 +207,7 @@ test("delete durably removes UI state and replaces the upsert before scheduled w
 test("failed upsert exposes manual retry without losing desired state", async (t) => {
   const desired = { clientId, page_url: "/products", content: "Retry me", status: "pending" };
   const annotation = serverBackedAnnotation({ comment: "Retry me", syncState: "failed", dirtyFields: ["content"], revision: 4 });
-  const harness = createToolbarHarness({ storage: { "rm-annotations": { annotations: [annotation], nextId: 8, outbox: {
+  const harness = createToolbarHarness({ storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [annotation], nextId: 8, outbox: {
     [clientId]: { type: "upsert", clientId, revision: 4, syncState: "failed", annotation: desired, dirtyFields: ["content"] }
   } } } });
   t.after(() => harness.reset());
@@ -231,7 +231,7 @@ test("failed upsert exposes manual retry without losing desired state", async (t
 
 test("failed delete remains visible and retryable after its card is gone", async (t) => {
   const tombstone = { type: "delete", clientId, revision: 9, syncState: "failed" };
-  const harness = createToolbarHarness({ storage: { "rm-annotations": { annotations: [], nextId: 8, outbox: { [clientId]: tombstone } } } });
+  const harness = createToolbarHarness({ storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [], nextId: 8, outbox: { [clientId]: tombstone } } } });
   t.after(() => harness.reset());
   injectToolbar(harness);
   harness.toolbar._loadFromStorage();
@@ -250,7 +250,7 @@ test("failed delete remains visible and retryable after its card is gone", async
 test("failed create restores annotations, outbox, next id, and UI without scheduling flush", (t) => {
   const harness = createToolbarHarness({
     uuids: [clientId],
-    storage: { "rm-annotations": { annotations: [], nextId: 1, outbox: {} } }
+    storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [], nextId: 1, outbox: {} } }
   });
   t.after(() => harness.reset());
   injectToolbar(harness);
@@ -279,7 +279,7 @@ test("failed create restores annotations, outbox, next id, and UI without schedu
 
 test("failed edit restores content, revision, sync state, and outbox without closing editor", async (t) => {
   const original = serverBackedAnnotation();
-  const harness = createToolbarHarness({ storage: { "rm-annotations": { annotations: [original], nextId: 8, outbox: {} } } });
+  const harness = createToolbarHarness({ storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [original], nextId: 8, outbox: {} } } });
   t.after(() => harness.reset());
   injectToolbar(harness);
   harness.toolbar._loadFromStorage();
@@ -304,7 +304,7 @@ test("failed edit restores content, revision, sync state, and outbox without clo
 
 test("failed status change restores status and does not show a success toast or schedule flush", (t) => {
   const original = serverBackedAnnotation();
-  const harness = createToolbarHarness({ storage: { "rm-annotations": { annotations: [original], nextId: 8, outbox: {} } } });
+  const harness = createToolbarHarness({ storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [original], nextId: 8, outbox: {} } } });
   t.after(() => harness.reset());
   injectToolbar(harness);
   harness.toolbar._loadFromStorage();
@@ -338,7 +338,7 @@ test("failed delete restores annotation order, card, outbox, revision, and count
   first.dirtyFields = ["content"];
   const harness = createToolbarHarness({
     url: "https://example.test/products",
-    storage: { "rm-annotations": { annotations: [first, second], nextId: 9, outbox: existingOutbox } }
+    storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [first, second], nextId: 9, outbox: existingOutbox } }
   });
   t.after(() => harness.reset());
   injectToolbar(harness);
@@ -365,7 +365,7 @@ test("failed manual retry remains failed and visible without scheduling flush", 
   const desired = { clientId, page_url: "/products", content: "Retry me", status: "pending" };
   const annotation = serverBackedAnnotation({ comment: "Retry me", syncState: "failed", dirtyFields: ["content"], revision: 4 });
   const failedEntry = { type: "upsert", clientId, revision: 4, syncState: "failed", annotation: desired, dirtyFields: ["content"] };
-  const harness = createToolbarHarness({ storage: { "rm-annotations": { annotations: [annotation], nextId: 8, outbox: { [clientId]: failedEntry } } } });
+  const harness = createToolbarHarness({ storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [annotation], nextId: 8, outbox: { [clientId]: failedEntry } } } });
   t.after(() => harness.reset());
   injectToolbar(harness);
   harness.toolbar._loadFromStorage();

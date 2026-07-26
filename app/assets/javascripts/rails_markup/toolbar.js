@@ -1042,13 +1042,17 @@
 
     // ---- Storage ----
 
-    _storageKey() { return "rm-annotations"; },
+    _storageKey() {
+      const endpoint = (this.endpoint || "/feedback/api").replace(/\/+$/, "") || "/";
+      return `rm-annotations:${encodeURIComponent(endpoint)}`;
+    },
     _pageUrl() { return window.location.pathname + window.location.search; },
-    _pageStorageKey() { return "rm-annotations:" + this._pageUrl(); },
+    _pageStorageKey() { return this._storageKey() + ":" + this._pageUrl(); },
 
     _saveToStorage() {
       try {
-        // Save all annotations to a single global key
+        // Cross-tab storage-event merging is deferred: safely reconciling ordered
+        // upserts and tombstones needs conflict semantics, not a last-write merge.
         localStorage.setItem(this._storageKey(), JSON.stringify({
           annotations: this.annotations,
           nextId: this.nextId,
@@ -1443,7 +1447,8 @@
 
     _loadFromStorage() {
       try {
-        // Load from global key first
+        // Old unnamespaced keys are intentionally not read because they may belong
+        // to another user or toolbar mount on the same origin.
         let raw = localStorage.getItem(this._storageKey());
         if (raw) {
           const data = JSON.parse(raw);
@@ -1466,8 +1471,8 @@
     },
 
     _migratePageAnnotations() {
-      // Find and merge any legacy per-page annotation keys
-      const prefix = "rm-annotations:";
+      // Find and merge per-page annotation keys only within this endpoint namespace.
+      const prefix = this._storageKey() + ":";
       const migratedKeys = [];
       const seenIds = new Set(this.annotations.map(a => a.id));
       const consolidatedClientIds = new Set(this.annotations.map(a => a.clientId).filter(clientId => this._validClientId(clientId)));
@@ -1544,6 +1549,8 @@
         return { annotation, index };
       });
 
+      this._normalizeOutboxEnvelopes();
+
       const byClientId = new Map();
       normalized.forEach(candidate => {
         const current = byClientId.get(candidate.annotation.clientId);
@@ -1556,7 +1563,10 @@
       this._assignDisplayIds();
       this.annotations.forEach(annotation => {
         const mapped = annotation.serverId != null;
-        const queued = Boolean(this.outbox[annotation.clientId]);
+        const queuedEntry = this.outbox[annotation.clientId];
+        const queued = Boolean(queuedEntry);
+        const annotationRevision = Number.isInteger(annotation.revision) && annotation.revision >= 0 ? annotation.revision : 0;
+        annotation.revision = annotationRevision;
         annotation.syncState = (queued && annotation.syncState === "failed")
           ? "failed"
           : ((queued || !mapped) ? "pending" : "synced");
@@ -1564,11 +1574,53 @@
           annotation.dirtyFields = this._legacyDirtyFields(annotation);
           this.outbox[annotation.clientId] = {
             type: "upsert",
+            clientId: annotation.clientId,
+            revision: annotation.revision,
+            syncState: "pending",
             annotation: this._desiredState(annotation),
             dirtyFields: annotation.dirtyFields.slice()
           };
         }
       });
+    },
+
+    _normalizeOutboxEnvelopes() {
+      const normalized = {};
+
+      Object.entries(this.outbox).forEach(([storedClientId, candidate]) => {
+        if (!this._plainObject(candidate)) return;
+
+        const nestedClientId = candidate.annotation?.clientId;
+        const clientId = this._validClientId(nestedClientId)
+          ? nestedClientId
+          : (this._validClientId(candidate.clientId)
+            ? candidate.clientId
+            : (this._validClientId(storedClientId) ? storedClientId : null));
+        if (!clientId) return;
+
+        const type = candidate.type === "delete"
+          ? "delete"
+          : ((candidate.type === "upsert" || this._plainObject(candidate.annotation)) ? "upsert" : null);
+        if (!type) return;
+
+        const annotation = this.annotations.find(record => record.clientId === clientId);
+        const candidateRevision = Number.isInteger(candidate.revision) && candidate.revision >= 0 ? candidate.revision : 0;
+        const annotationRevision = Number.isInteger(annotation?.revision) && annotation.revision >= 0 ? annotation.revision : 0;
+        const envelope = Object.assign({}, candidate, {
+          type,
+          clientId,
+          revision: Math.max(candidateRevision, annotationRevision),
+          syncState: candidate.syncState === "failed" ? "failed" : "pending"
+        });
+
+        if (type === "upsert") {
+          envelope.annotation = Object.assign({}, candidate.annotation, { clientId });
+          envelope.dirtyFields = this._mergeDirtyFields(candidate.dirtyFields || envelope.annotation.dirtyFields || []);
+        }
+        normalized[clientId] = envelope;
+      });
+
+      this.outbox = normalized;
     },
 
     _isNewerLocalRecord(candidate, current) {
