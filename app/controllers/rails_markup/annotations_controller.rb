@@ -88,8 +88,21 @@ module RailsMarkup
     def destroy
       client_uuid = normalized_route_uuid
       return render_invalid_uuid unless client_uuid
+      base_revision = normalized_base_revision
+      return render_invalid_base_revision unless base_revision
 
-      Annotation.find_by(client_uuid: client_uuid)&.destroy!
+      annotation = Annotation.find_by(client_uuid: client_uuid)
+      return head :no_content unless annotation
+
+      annotation.with_lock do
+        raise Annotation::RevisionConflict, annotation unless annotation.revision == base_revision
+
+        annotation.destroy!
+      end
+      head :no_content
+    rescue Annotation::RevisionConflict => error
+      render_revision_conflict(error)
+    rescue ActiveRecord::RecordNotFound
       head :no_content
     end
 
@@ -260,7 +273,7 @@ module RailsMarkup
     def render_revision_conflict(error)
       render json: {
         error: "revision conflict",
-        annotation: error.annotation.as_api_json
+        annotation: error.annotation.new_record? ? nil : error.annotation.as_api_json
       }, status: :conflict
     end
 

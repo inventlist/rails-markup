@@ -73,6 +73,7 @@ export function createToolbarHarness(options = {}) {
 
   window.eval(toolbarSource);
   window.RailsMarkupToolbar.endpoint = options.endpoint || "/feedback/api";
+  window.RailsMarkupToolbar.legacyStorageEndpoint = options.legacyStorageEndpoint || null;
 
   const nextTimer = (target) => {
     const candidates = [

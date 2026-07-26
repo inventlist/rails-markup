@@ -267,6 +267,7 @@ test("a delete replacing an in-flight upsert is not resurrected by the older res
   assert.equal(harness.toolbar.outbox[firstId].revision, 2);
   assert.equal(fetch.calls.length, 2);
   assert.equal(fetch.calls[1].options.method, "DELETE");
+  assert.equal(JSON.parse(fetch.calls[1].options.body).baseRevision, 0);
   replacement.respondWith({}, { status: 204 });
   await flush;
   assert.equal(harness.toolbar.outbox[firstId], undefined);
@@ -282,9 +283,93 @@ test("DELETE 204 clears only the exact current tombstone without parsing JSON", 
 
   await harness.toolbar._flushOutbox();
   assert.equal(fetch.calls[0].options.method, "DELETE");
+  assert.equal(JSON.parse(fetch.calls[0].options.body).baseRevision, 0);
   assert.deepEqual(JSON.parse(JSON.stringify(harness.toolbar.outbox)), {
     [secondId]: { ...other, baseRevision: 0 }
   });
+});
+
+test("stale DELETE restores the newer server annotation from the 409 and stops deleting", async (t) => {
+  const annotation = localAnnotation(firstId, { serverId: "101", serverRevision: 1 });
+  const current = serverRepresentation(annotation, {
+    status: "resolved",
+    thread: [{ role: "agent", message: "Fixed by MCP" }],
+    revision: 2,
+    updatedAt: "2026-07-20T00:00:02Z"
+  });
+  const fetch = createFakeFetch();
+  fetch.respondWith({ error: "revision conflict", annotation: current }, { status: 409 });
+  fetch.respondWith([current]);
+  const tombstone = { type: "delete", clientId: firstId, revision: 7, baseRevision: 1, syncState: "pending" };
+  const harness = flushHarness({ annotations: [], outbox: { [firstId]: tombstone }, fetch });
+  t.after(() => harness.reset());
+
+  await harness.toolbar._flushOutbox();
+
+  assert.equal(fetch.calls.length, 2);
+  assert.equal(fetch.calls[0].options.method, "DELETE");
+  assert.equal(JSON.parse(fetch.calls[0].options.body).baseRevision, 1);
+  assert.match(fetch.calls[1].url, /annotations\?page_url=/);
+  assert.equal(harness.toolbar.outbox[firstId], undefined);
+  assert.equal(harness.toolbar.annotations.length, 1);
+  assert.equal(harness.toolbar.annotations[0].status, "resolved");
+  assert.equal(harness.toolbar.annotations[0].serverRevision, 2);
+  assert.deepEqual(JSON.parse(JSON.stringify(harness.toolbar.annotations[0].thread)), current.thread);
+});
+
+test("409 representation rebases a record moved off the current page without a pull retry loop", async (t) => {
+  const annotation = localAnnotation(firstId, {
+    serverId: "101",
+    serverRevision: 1,
+    severity: "important",
+    dirtyFields: ["severity"]
+  });
+  const entry = upsertEntry(annotation, { baseRevision: 1 });
+  const moved = serverRepresentation(annotation, {
+    pageUrl: "/other-page",
+    severity: "suggestion",
+    revision: 2,
+    updatedAt: "2026-07-20T00:00:02Z"
+  });
+  const fetch = createFakeFetch();
+  fetch.respondWith({ error: "revision conflict", annotation: moved }, { status: 409 });
+  fetch.respondWith([]);
+  fetch.respondWith({ ...moved, severity: "important", revision: 3, updatedAt: "2026-07-20T00:00:03Z" });
+  const harness = flushHarness({ annotations: [annotation], outbox: { [firstId]: entry }, fetch });
+  t.after(() => harness.reset());
+
+  await harness.toolbar._flushOutbox();
+
+  assert.equal(fetch.calls.length, 3);
+  assert.match(fetch.calls[1].url, /annotations\?page_url=/);
+  const retry = JSON.parse(fetch.calls[2].options.body);
+  assert.equal(retry.baseRevision, 2);
+  assert.equal(retry.page_url, "/other-page");
+  assert.deepEqual(retry.dirtyFields, ["severity"]);
+  assert.equal(harness.toolbar.outbox[firstId], undefined);
+  assert.equal(harness.toolbar.annotations[0].pageUrl, "/other-page");
+  assert.equal(harness.toolbar.annotations[0].serverRevision, 3);
+});
+
+test("missing-record 409 rebases once and then stops automatic conflict retries", async (t) => {
+  const annotation = localAnnotation(firstId, { serverId: "101", serverRevision: 2 });
+  const entry = upsertEntry(annotation, { baseRevision: 2 });
+  const fetch = createFakeFetch();
+  fetch.respondWith({ error: "revision conflict", annotation: null }, { status: 409 });
+  fetch.respondWith([]);
+  fetch.respondWith({ error: "revision conflict", annotation: null }, { status: 409 });
+  fetch.respondWith([]);
+  const harness = flushHarness({ annotations: [annotation], outbox: { [firstId]: entry }, fetch });
+  t.after(() => harness.reset());
+
+  await harness.toolbar._flushOutbox();
+
+  assert.equal(fetch.calls.length, 4);
+  assert.equal(JSON.parse(fetch.calls[0].options.body).baseRevision, 2);
+  assert.equal(JSON.parse(fetch.calls[2].options.body).baseRevision, 0);
+  assert.equal(harness.toolbar.outbox[firstId].syncState, "failed");
+  assert.equal(harness.toolbar.annotations[0].syncState, "failed");
+  assert.equal(harness.toolbar._syncRetryTimer, null);
 });
 
 test("DELETE accepts any successful response without requiring a representation", async (t) => {

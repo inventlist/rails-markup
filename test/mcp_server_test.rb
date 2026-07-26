@@ -84,6 +84,11 @@ class McpServerTest < Minitest::Test
 
     assert_equal %w[annotationId message], tools.fetch("rails_markup_reply").dig("inputSchema", "required")
     assert_equal %w[annotationId reason], tools.fetch("rails_markup_dismiss").dig("inputSchema", "required")
+    assert_equal RailsMarkup::McpServer::MAX_ACTION_MESSAGE_LENGTH, transition.dig("properties", "summary", "maxLength")
+    assert_equal RailsMarkup::McpServer::MAX_ACTION_MESSAGE_LENGTH,
+      tools.fetch("rails_markup_reply").dig("inputSchema", "properties", "message", "maxLength")
+    assert_equal RailsMarkup::McpServer::MAX_ACTION_MESSAGE_LENGTH,
+      tools.fetch("rails_markup_dismiss").dig("inputSchema", "properties", "reason", "maxLength")
   end
 
   def test_canonical_tools_advertise_safety_annotations
@@ -622,6 +627,21 @@ class McpServerTest < Minitest::Test
     calls.each do |name, arguments|
       response = call_tool_response(name, **arguments)
       assert_equal true, response.dig("result", "isError"), "expected #{name} to validate types and bounds"
+    end
+  end
+
+  def test_action_messages_over_the_input_limit_are_rejected_with_clear_errors
+    oversized = "x" * (RailsMarkup::McpServer::MAX_ACTION_MESSAGE_BYTES + 1)
+    calls = [
+      ["rails_markup_transition", { action: "resolve", annotationId: "123", summary: oversized }, "summary"],
+      ["rails_markup_reply", { annotationId: "123", message: oversized }, "message"],
+      ["rails_markup_dismiss", { annotationId: "123", reason: oversized }, "reason"]
+    ]
+
+    calls.each do |name, arguments, field|
+      response = call_tool_response(name, **arguments)
+      assert_equal true, response.dig("result", "isError")
+      assert_match(/#{field} exceeds .* bytes/i, response.dig("result", "content", 0, "text"))
     end
   end
 

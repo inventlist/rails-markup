@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2026-07-26
+
+Fourth-round audit follow-ups — completes the revision protocol and closes concurrency edges. No schema change (1.4.0's migration still applies).
+
+### Fixed
+
+- **Browser DELETE participates in optimistic concurrency:** it now requires `baseRevision`, locks the row, and returns `409` (with the current record) on mismatch instead of destroying — so a stale tab can't delete an annotation that an agent just replied to/resolved. Stays idempotent when the record is already gone.
+- **Dashboard writes bump `revision`:** board `transition` (under a row lock) and `dismiss_all` now increment `revision`, so a concurrent toolbar edit conflicts (409) instead of silently overwriting them or being lost.
+- **Toolbar 409 handling no longer loops:** it consumes the record returned in the conflict body to rebase; a moved record reconciles without a page-pull loop, and a genuinely missing record stops retrying instead of conflicting forever.
+- **Thread growth is bounded** on both the ActiveRecord model (max entries + per-entry length) and the standalone store (per-message byte cap + thread bytes counted toward the aggregate memory cap). MCP `summary`/`message`/`reason` advertise and enforce a 5000-char/byte maximum.
+- **Standalone store enforces valid status transitions** (idempotent on same terminal state, rejects reopening) — mirrors the model's state machine.
+- **Legacy localStorage migration is provenance-safe:** only the exact current-page key auto-migrates; the ambiguous bare `rm-annotations` key is left intact (recoverable by another mount) unless an explicit `legacyStorageEndpoint` designates this toolbar to claim it.
+
+### Docs
+
+- Corrected the 1.4.0 upgrade note: engine migrations must be copied first (`rails railties:install:migrations FROM=rails_markup`) before `rails db:migrate`.
+
 ## [1.4.0] - 2026-07-26
 
 Third-round audit hardening: concurrency, credential provenance, and a safe upgrade path for the browser sync protocol.

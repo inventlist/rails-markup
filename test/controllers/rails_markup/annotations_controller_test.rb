@@ -135,7 +135,7 @@ module RailsMarkup
       assert_equal "Updated lowercase", Annotation.find_by!(client_uuid: lowercase).content
 
       assert_difference "Annotation.count", -1 do
-        delete "/feedback/api/annotations/#{uppercase}", as: :json
+        delete "/feedback/api/annotations/#{uppercase}", params: { baseRevision: 2 }, as: :json
       end
       assert_response :no_content
     end
@@ -172,14 +172,47 @@ module RailsMarkup
       Annotation.create!(client_uuid: DELETE_UUID, content: "Delete", page_url: "/delete")
 
       assert_difference "Annotation.count", -1 do
-        delete "/feedback/api/annotations/#{DELETE_UUID}", as: :json
+        delete "/feedback/api/annotations/#{DELETE_UUID}", params: { baseRevision: 0 }, as: :json
       end
       assert_response :no_content
 
       assert_no_difference "Annotation.count" do
-        delete "/feedback/api/annotations/#{DELETE_UUID}", as: :json
+        delete "/feedback/api/annotations/#{DELETE_UUID}", params: { baseRevision: 0 }, as: :json
       end
       assert_response :no_content
+    end
+
+    test "stale delete conflicts with a newer server transition and preserves its thread" do
+      annotation = Annotation.create!(
+        client_uuid: DELETE_UUID,
+        content: "Delete",
+        page_url: "/delete",
+        revision: 0
+      )
+      annotation.resolve!(summary: "Fixed by MCP")
+
+      assert_no_difference "Annotation.count" do
+        delete "/feedback/api/annotations/#{DELETE_UUID}",
+          params: { baseRevision: 0 },
+          as: :json
+      end
+
+      assert_response :conflict
+      assert_equal 1, response.parsed_body.dig("annotation", "revision")
+      assert_equal "resolved", response.parsed_body.dig("annotation", "status")
+      assert_equal "Fixed by MCP", response.parsed_body.dig("annotation", "thread", 0, "message")
+      assert_equal "resolved", annotation.reload.status
+    end
+
+    test "delete requires a non-negative integer base revision" do
+      Annotation.create!(client_uuid: DELETE_UUID, content: "Delete", page_url: "/delete")
+
+      assert_no_difference "Annotation.count" do
+        delete "/feedback/api/annotations/#{DELETE_UUID}", as: :json
+      end
+
+      assert_response :unprocessable_entity
+      assert_match(/base revision/i, response.parsed_body["error"])
     end
 
     test "put rejects whitespace and oversized uuids" do
@@ -392,6 +425,30 @@ module RailsMarkup
       assert_equal "First client edit", annotation.content
       assert_equal "suggestion", annotation.severity
       assert_equal 1, annotation.revision
+    end
+
+    test "put conflict reports a missing server record without fabricating an annotation" do
+      annotation = Annotation.create!(
+        client_uuid: DIRTY_UUID,
+        content: "Deleted elsewhere",
+        page_url: "/missing",
+        revision: 1
+      )
+      annotation.destroy!
+
+      assert_no_difference "Annotation.count" do
+        put "/feedback/api/annotations/#{DIRTY_UUID}",
+          params: {
+            content: "Unsynced local edit",
+            page_url: "/missing",
+            dirtyFields: ["content"],
+            baseRevision: 1
+          },
+          as: :json
+      end
+
+      assert_response :conflict
+      assert_nil response.parsed_body["annotation"]
     end
 
     test "put rejects invalid dirty fields and invalid explicitly dirty status" do

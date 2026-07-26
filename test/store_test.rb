@@ -137,6 +137,27 @@ class StoreTest < Minitest::Test
     assert_equal 0, @store.pending_for_session(session.id).size
   end
 
+  def test_terminal_transitions_are_idempotent_and_cannot_be_reopened
+    session = @store.create_session(url: "http://example.com")
+    resolved = @store.create_annotation(session_id: session.id, target: "div", content: "resolved")
+    dismissed = @store.create_annotation(session_id: session.id, target: "div", content: "dismissed")
+
+    @store.resolve(resolved.id, summary: "Done")
+    assert_same resolved, @store.resolve(resolved.id, summary: "Must not append")
+    assert_equal 1, resolved.thread.size
+    assert_raises(RailsMarkup::Store::ValidationError) { @store.acknowledge(resolved.id) }
+    assert_raises(RailsMarkup::Store::ValidationError) { @store.dismiss(resolved.id, reason: "Wrong terminal state") }
+
+    @store.dismiss(dismissed.id, reason: "Not applicable")
+    assert_same dismissed, @store.dismiss(dismissed.id, reason: "Must not append")
+    assert_equal 1, dismissed.thread.size
+    assert_raises(RailsMarkup::Store::ValidationError) { @store.acknowledge(dismissed.id) }
+    assert_raises(RailsMarkup::Store::ValidationError) { @store.resolve(dismissed.id, summary: "Wrong terminal state") }
+
+    assert_equal "resolved", resolved.status
+    assert_equal "dismissed", dismissed.status
+  end
+
   # --- Serialization ---
 
   def test_serialize_session
@@ -268,6 +289,25 @@ class StoreTest < Minitest::Test
     assert_match(/byte limit/i, error.message)
     assert_equal 1, first_session.annotations.length
     assert_empty second_session.annotations
+  end
+
+  def test_thread_messages_are_bounded_and_count_toward_the_aggregate_byte_cap
+    store = RailsMarkup::Store.new(max_annotation_bytes: 500)
+    session = store.create_session(url: "http://example.com")
+    annotation = store.create_annotation(session_id: session.id, target: "div", content: "small")
+
+    error = assert_raises(RailsMarkup::Store::CapacityError) do
+      store.reply(annotation.id, message: "x" * 450)
+    end
+    assert_match(/byte limit/i, error.message)
+    assert_empty annotation.thread
+
+    oversized = "x" * (RailsMarkup::Store::MAX_THREAD_MESSAGE_BYTES + 1)
+    validation_error = assert_raises(RailsMarkup::Store::ValidationError) do
+      store.reply(annotation.id, message: oversized)
+    end
+    assert_match(/message exceeds/i, validation_error.message)
+    assert_empty annotation.thread
   end
 
   def test_create_annotation_validates_basic_fields

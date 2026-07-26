@@ -22,6 +22,7 @@ module RailsMarkup
     MAX_TARGET_BYTES = 16_384
     MAX_SELECTED_TEXT_BYTES = 2_000
     MAX_METADATA_BYTES = 65_536
+    MAX_THREAD_MESSAGE_BYTES = 5_000
     INTENTS = %w[fix change question approve].freeze
     SEVERITIES = %w[suggestion important blocking].freeze
 
@@ -119,35 +120,64 @@ module RailsMarkup
     # --- Status transitions ---
 
     def acknowledge(annotation_id)
-      update_status(annotation_id, "acknowledged")
+      @mutex.synchronize do
+        ann = @annotations_index[annotation_id]
+        return nil unless ann
+        return ann if ann.status == "acknowledged"
+
+        validate_transition!(ann, "acknowledged", from: %w[pending])
+        ann.status = "acknowledged"
+        ann
+      end
     end
 
     def resolve(annotation_id, summary: nil)
-      ann = update_status(annotation_id, "resolved")
-      return nil unless ann
+      changed = false
+      ann = @mutex.synchronize do
+        annotation = @annotations_index[annotation_id]
+        return nil unless annotation
+        return annotation if annotation.status == "resolved"
 
-      ann.thread << { role: "agent", message: summary, timestamp: Time.now.iso8601 } if summary
+        validate_transition!(annotation, "resolved", from: %w[pending acknowledged])
+        append_thread_message!(annotation, summary) unless summary.nil? || summary == ""
+        annotation.status = "resolved"
+        changed = true
+        annotation
+      end
+      return ann unless changed
+
       notify(ann.session_id, type: "annotation_update", annotation: serialize_annotation(ann),
                              status: "resolved", summary: summary)
       ann
     end
 
     def dismiss(annotation_id, reason: nil)
-      ann = update_status(annotation_id, "dismissed")
-      return nil unless ann
+      changed = false
+      ann = @mutex.synchronize do
+        annotation = @annotations_index[annotation_id]
+        return nil unless annotation
+        return annotation if annotation.status == "dismissed"
 
-      ann.thread << { role: "agent", message: reason, timestamp: Time.now.iso8601 } if reason
+        validate_transition!(annotation, "dismissed", from: %w[pending acknowledged])
+        append_thread_message!(annotation, reason) unless reason.nil? || reason == ""
+        annotation.status = "dismissed"
+        changed = true
+        annotation
+      end
+      return ann unless changed
+
       notify(ann.session_id, type: "annotation_update", annotation: serialize_annotation(ann),
                              status: "dismissed", reason: reason)
       ann
     end
 
     def reply(annotation_id, message:)
-      ann = get_annotation(annotation_id)
-      return nil unless ann
+      ann = @mutex.synchronize do
+        annotation = @annotations_index[annotation_id]
+        return nil unless annotation
 
-      @mutex.synchronize do
-        ann.thread << { role: "agent", message: message, timestamp: Time.now.iso8601 }
+        append_thread_message!(annotation, message)
+        annotation
       end
       notify(ann.session_id, type: "annotation_update", annotation: serialize_annotation(ann),
                              status: ann.status, message: message)
@@ -201,12 +231,26 @@ module RailsMarkup
 
     private
 
-    def update_status(annotation_id, new_status)
-      ann = get_annotation(annotation_id)
-      return nil unless ann
+    def validate_transition!(annotation, new_status, from:)
+      return if from.include?(annotation.status)
 
-      @mutex.synchronize { ann.status = new_status }
-      ann
+      raise ValidationError, "cannot transition #{annotation.status} annotation to #{new_status}"
+    end
+
+    def append_thread_message!(annotation, message)
+      validate_string!("message", message, maximum: MAX_THREAD_MESSAGE_BYTES)
+      new_thread = annotation.thread + [{ role: "agent", message: message, timestamp: Time.now.iso8601 }]
+      enforce_thread_capacity!(annotation, new_thread)
+      annotation.thread = new_thread
+    end
+
+    def enforce_thread_capacity!(annotation, new_thread)
+      current_bytes = aggregate_annotation_bytes
+      proposed_bytes = current_bytes - annotation_storage_bytes(annotation) +
+        annotation_storage_bytes(annotation, thread: new_thread)
+      return if proposed_bytes <= @max_annotation_bytes
+
+      raise CapacityError, "aggregate annotation byte limit of #{@max_annotation_bytes} reached"
     end
 
     def notify(session_id, data)
@@ -235,7 +279,7 @@ module RailsMarkup
       raise ValidationError, "metadata exceeds #{MAX_METADATA_BYTES} bytes" if metadata_bytes > MAX_METADATA_BYTES
 
       JSON.generate(
-        target:, content:, intent:, severity:, selected_text:, metadata: metadata || {}
+        target:, content:, intent:, severity:, selected_text:, metadata: metadata || {}, thread: []
       ).bytesize
     rescue JSON::GeneratorError, Encoding::UndefinedConversionError
       raise ValidationError, "annotation fields must be JSON serializable"
@@ -268,22 +312,27 @@ module RailsMarkup
         raise CapacityError, "session annotation limit of #{@max_annotations_per_session} reached"
       end
 
-      current_bytes = @sessions.values.sum do |stored_session|
-        stored_session.annotations.sum { |annotation| annotation_storage_bytes(annotation) }
-      end
+      current_bytes = aggregate_annotation_bytes
       return if current_bytes + incoming_bytes <= @max_annotation_bytes
 
       raise CapacityError, "aggregate annotation byte limit of #{@max_annotation_bytes} reached"
     end
 
-    def annotation_storage_bytes(annotation)
+    def aggregate_annotation_bytes
+      @sessions.values.sum do |stored_session|
+        stored_session.annotations.sum { |annotation| annotation_storage_bytes(annotation) }
+      end
+    end
+
+    def annotation_storage_bytes(annotation, thread: annotation.thread)
       JSON.generate(
         target: annotation.target,
         content: annotation.content,
         intent: annotation.intent,
         severity: annotation.severity,
         selected_text: annotation.selected_text,
-        metadata: annotation.metadata
+        metadata: annotation.metadata,
+        thread: thread
       ).bytesize
     end
 

@@ -22,6 +22,9 @@ module RailsMarkup
     class ToolError < StandardError; end
     class TargetError < ToolError; end
 
+    MAX_ACTION_MESSAGE_LENGTH = 5_000
+    MAX_ACTION_MESSAGE_BYTES = 5_000
+
     ENV_SCHEMA = {
       environment: {
         type: "string",
@@ -74,7 +77,11 @@ module RailsMarkup
           properties: {
             action: { type: "string", enum: %w[acknowledge resolve], description: "State transition to apply." },
             annotationId: { type: "string", description: "The annotation ID" },
-            summary: { type: "string", description: "Optional resolution summary; valid only for resolve." },
+            summary: {
+              type: "string",
+              maxLength: MAX_ACTION_MESSAGE_LENGTH,
+              description: "Optional resolution summary; valid only for resolve."
+            },
             **ENV_SCHEMA
           },
           required: %w[action annotationId],
@@ -89,7 +96,7 @@ module RailsMarkup
           type: "object",
           properties: {
             annotationId: { type: "string", description: "The annotation ID" },
-            message: { type: "string", description: "Reply message" },
+            message: { type: "string", maxLength: MAX_ACTION_MESSAGE_LENGTH, description: "Reply message" },
             **ENV_SCHEMA
           },
           required: %w[annotationId message],
@@ -104,7 +111,7 @@ module RailsMarkup
           type: "object",
           properties: {
             annotationId: { type: "string", description: "The annotation ID" },
-            reason: { type: "string", description: "Reason for dismissal" },
+            reason: { type: "string", maxLength: MAX_ACTION_MESSAGE_LENGTH, description: "Reason for dismissal" },
             **ENV_SCHEMA
           },
           required: %w[annotationId reason],
@@ -372,11 +379,14 @@ module RailsMarkup
         return "action must be acknowledge or resolve." unless %w[acknowledge resolve].include?(args["action"])
         return "annotationId must be a non-empty string." unless nonempty_string?(args["annotationId"])
         return "summary must be a string." if args.key?("summary") && !args["summary"].is_a?(String)
+        return oversized_action_message_error("summary", args["summary"]) if oversized_action_message?(args["summary"])
         return "summary is only valid for resolve." if args["action"] != "resolve" && args.key?("summary")
       when "rails_markup_reply"
         return "annotationId and message must be non-empty strings." unless nonempty_string?(args["annotationId"]) && nonempty_string?(args["message"])
+        return oversized_action_message_error("message", args["message"]) if oversized_action_message?(args["message"])
       when "rails_markup_dismiss"
         return "annotationId and reason must be non-empty strings." unless nonempty_string?(args["annotationId"]) && nonempty_string?(args["reason"])
+        return oversized_action_message_error("reason", args["reason"]) if oversized_action_message?(args["reason"])
       when "rails_markup_watch"
         return "sessionId must be a non-empty string." if args.key?("sessionId") && !nonempty_string?(args["sessionId"])
         unless !args.key?("timeoutSeconds") || numeric_between?(args["timeoutSeconds"], 0, 300)
@@ -398,6 +408,14 @@ module RailsMarkup
 
     def numeric_between?(value, minimum, maximum)
       value.is_a?(Numeric) && value.finite? && value.between?(minimum, maximum)
+    end
+
+    def oversized_action_message?(value)
+      value.is_a?(String) && value.bytesize > MAX_ACTION_MESSAGE_BYTES
+    end
+
+    def oversized_action_message_error(name, _value)
+      "#{name} exceeds #{MAX_ACTION_MESSAGE_BYTES} bytes."
     end
 
     def invalid_arguments_response(id, _unknown)

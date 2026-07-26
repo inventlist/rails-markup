@@ -43,6 +43,7 @@
     _syncMaxRetryDelay: 30000,
     _syncMalformedLimit: 3,
     _syncUnavailable: null,
+    legacyStorageEndpoint: null,
 
     // Drawing state
     drawingMode: null,      // null | "arrow" | "rect" | "highlight"
@@ -73,6 +74,7 @@
       this.size = opts.size || "default";
       this.fabVisible = opts.fabVisible !== false;
       this.enableScreenshots = opts.enableScreenshots !== false;
+      this.legacyStorageEndpoint = opts.legacyStorageEndpoint || this.legacyStorageEndpoint;
       this.healthIntervalMs = (opts.healthInterval || 60) * 1000;
 
       if (document.getElementById("rm-toolbar-root")) {
@@ -1215,13 +1217,14 @@
           continue;
         }
         if (result.kind === "conflict") {
-          const pulled = await this._pullAnnotations();
-          if (pulled && this.outbox[clientId]) {
+          const resolution = this._reconcileSyncConflict(snapshot, result);
+          await this._pullAnnotations();
+          if (resolution === "retry" && this.outbox[clientId]) {
             clientIds.push(clientId);
             continue;
           }
-          this._scheduleSyncRetry();
-          break;
+          this._resetSyncRetry();
+          continue;
         }
         if (result.kind === "malformed") {
           if (!this._outboxEntryMatches(snapshot)) {
@@ -1250,7 +1253,11 @@
         redirect: "manual",
         signal: AbortSignal.timeout(5000)
       };
-      if (snapshot.type === "upsert") {
+      if (snapshot.type === "delete") {
+        options.body = JSON.stringify({
+          baseRevision: Number.isInteger(snapshot.baseRevision) ? snapshot.baseRevision : 0
+        });
+      } else {
         options.body = JSON.stringify(Object.assign({}, snapshot.annotation, {
           dirtyFields: snapshot.dirtyFields || [],
           baseRevision: Number.isInteger(snapshot.baseRevision) ? snapshot.baseRevision : 0
@@ -1292,7 +1299,7 @@
       if ([408, 425, 429].includes(status) || status >= 500) {
         return { kind: "retryable", retryAfter: this._retryAfterDelay(response) };
       }
-      if (status === 409 && snapshot.type === "upsert") return { kind: "conflict" };
+      if (status === 409) return this._classifyConflictResponse(snapshot, response);
       if (status >= 400) return { kind: "terminal" };
       if (!response.ok) return { kind: "retryable" };
       if (snapshot.type === "delete") return { kind: "success", data: null };
@@ -1306,6 +1313,25 @@
         const data = await response.json();
         if (!this._validServerAnnotation(data, snapshot.clientId)) return { kind: "malformed" };
         return { kind: "success", data };
+      } catch {
+        return { kind: "malformed" };
+      }
+    },
+
+    async _classifyConflictResponse(snapshot, response) {
+      const contentType = response.headers.get("Content-Type") || "";
+      if (!contentType.toLowerCase().includes("application/json")) return { kind: "malformed" };
+
+      try {
+        const body = await response.json();
+        if (!this._plainObject(body) || !Object.prototype.hasOwnProperty.call(body, "annotation")) {
+          return { kind: "malformed" };
+        }
+        if (body.annotation === null && snapshot.type === "upsert") {
+          return { kind: "conflict", missing: true, data: null };
+        }
+        if (!this._validServerAnnotation(body.annotation, snapshot.clientId)) return { kind: "malformed" };
+        return { kind: "conflict", missing: false, data: body.annotation };
       } catch {
         return { kind: "malformed" };
       }
@@ -1383,6 +1409,57 @@
       annotation.pathname = server.pageUrl || annotation.pathname;
       annotation.dirtyFields = (annotation.dirtyFields || []).filter(field => !sentDirtyFields.includes(field));
       annotation.syncState = "synced";
+    },
+
+    _reconcileSyncConflict(snapshot, conflict) {
+      if (!this._outboxEntryMatches(snapshot)) return "stop";
+
+      let resolution = "stop";
+      const committed = this._commitLocalStateChange(() => {
+        if (!this._outboxEntryMatches(snapshot)) return;
+        const entry = this.outbox[snapshot.clientId];
+        const annotation = this.annotations.find(candidate => candidate.clientId === snapshot.clientId);
+
+        if (snapshot.type === "delete") {
+          delete this.outbox[snapshot.clientId];
+          if (annotation) this._mergePulledAnnotation(annotation, conflict.data, null);
+          else this.annotations.push(this._annotationFromServer(conflict.data));
+          this._assignDisplayIds();
+          return;
+        }
+
+        if (conflict.missing) {
+          if (entry.missingConflictRebased) {
+            entry.syncState = "failed";
+            if (annotation) annotation.syncState = "failed";
+            return;
+          }
+          entry.baseRevision = 0;
+          entry.missingConflictRebased = true;
+          if (annotation) {
+            annotation.serverId = null;
+            annotation.serverRevision = 0;
+          }
+          resolution = "retry";
+          return;
+        }
+
+        if (!annotation) {
+          entry.syncState = "failed";
+          return;
+        }
+        this._mergePulledAnnotation(annotation, conflict.data, entry);
+        entry.annotation = this._desiredState(annotation);
+        entry.dirtyFields = (annotation.dirtyFields || []).slice();
+        entry.baseRevision = conflict.data.revision;
+        delete entry.missingConflictRebased;
+        resolution = "retry";
+      });
+      if (!committed) return "stop";
+      this._renderPins();
+      this._rebuildList();
+      this._updateCount();
+      return resolution;
     },
 
     _markSyncFailed(snapshot) {
@@ -1479,9 +1556,9 @@
             ? data.legacyMigrations
             : {};
         }
-        // Pre-1.3 storage had no endpoint identity. The first configured endpoint
-        // to load on this origin claims it once; successful consolidation removes
-        // the source keys so another endpoint cannot import the same data later.
+        // Pre-1.3 bare storage has no endpoint provenance, so it is left intact
+        // unless the host explicitly designates this endpoint. Page-qualified
+        // legacy keys are only claimed by a toolbar currently on that exact page.
         const migratedKeys = this._migrateUnnamespacedStorage();
         migratedKeys.push(...this._migratePageAnnotations());
         this._normalizeStoredState();
@@ -1494,9 +1571,13 @@
 
     _migrateUnnamespacedStorage() {
       const sourceKeys = [];
+      const designatedEndpoint = (this.legacyStorageEndpoint || "").replace(/\/+$/, "");
+      const currentEndpoint = (this.endpoint || "").replace(/\/+$/, "");
+      const claimBareStorage = Boolean(designatedEndpoint) && designatedEndpoint === currentEndpoint;
+      const currentPageKey = `rm-annotations:${this._pageUrl()}`;
       for (let index = 0; index < localStorage.length; index++) {
         const key = localStorage.key(index);
-        if (key === "rm-annotations" || (key && key.startsWith("rm-annotations:/"))) sourceKeys.push(key);
+        if ((claimBareStorage && key === "rm-annotations") || key === currentPageKey) sourceKeys.push(key);
       }
 
       const migratedKeys = [];

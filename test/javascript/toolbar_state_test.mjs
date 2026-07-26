@@ -225,6 +225,8 @@ test("pre-1.3 bare annotations and outbox migrate into the current endpoint name
     dirtyFields: ["content", "severity"]
   };
   const harness = createToolbarHarness({
+    url: "https://example.test/page",
+    legacyStorageEndpoint: "/feedback/api",
     uuids: [uuidB],
     storage: {
       "rm-annotations": {
@@ -264,6 +266,34 @@ test("pre-1.3 bare annotations and outbox migrate into the current endpoint name
 
   harness.toolbar._loadFromStorage();
   assert.equal(harness.toolbar.annotations.length, 2);
+});
+
+test("legacy migration leaves ambiguous bare data and other pages available to another endpoint", (t) => {
+  const harness = createToolbarHarness({
+    url: "https://example.test/alpha",
+    endpoint: "/alpha/api",
+    uuids: [uuidA],
+    storage: {
+      "rm-annotations": {
+        annotations: [{ id: 1, comment: "Ambiguous", pathname: "/alpha" }],
+        outbox: { legacy: { type: "upsert" } }
+      },
+      "rm-annotations:/alpha": {
+        annotations: [{ id: 2, comment: "Alpha page", pathname: "/alpha" }]
+      },
+      "rm-annotations:/beta": {
+        annotations: [{ id: 3, comment: "Beta page", pathname: "/beta" }]
+      }
+    }
+  });
+  t.after(() => harness.reset());
+
+  harness.toolbar._loadFromStorage();
+
+  assert.deepEqual(Array.from(harness.toolbar.annotations, annotation => annotation.comment), ["Alpha page"]);
+  assert.notEqual(harness.window.localStorage.getItem("rm-annotations"), null);
+  assert.equal(harness.window.localStorage.getItem("rm-annotations:/alpha"), null);
+  assert.notEqual(harness.window.localStorage.getItem("rm-annotations:/beta"), null);
 });
 
 test("legacy migration preserves malformed and unrecognized prefixed keys", (t) => {
