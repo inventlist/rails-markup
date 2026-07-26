@@ -190,4 +190,8 @@ class ConfigurationTest < ActiveSupport::TestCase
     config = RailsMarkup::Configuration.new
     assert_raises(ArgumentError) { config.toolbar_size = "huge" }
   end
+
+  test "require_api_token_in_development defaults to false (dev API open)" do
+    assert_equal false, RailsMarkup::Configuration.new.require_api_token_in_development
+  end
 end

@@ -70,8 +70,19 @@ module RailsMarkup
           <% end %>
         ERB
 
-        if File.read(File.join(destination_root, layout_path)).include?("rails_markup/shared/toolbar")
-          say_status :skip, "toolbar already present in #{layout_path}", :yellow
+        content = File.read(File.join(destination_root, layout_path))
+
+        if content.include?("rails_markup/shared/toolbar")
+          # Upgrade the pre-1.2.3 partial-existence gate, which rendered the
+          # toolbar for every visitor, to the admin-gated block. Leave any
+          # custom (hand-edited) block untouched so we don't clobber it.
+          legacy = /^[ \t]*<%#\s*Rails Markup annotation toolbar\s*%>\r?\n[ \t]*<%\s*if\s+lookup_context\.exists\?.*?<%\s*end\s*%>\r?\n?/m
+          if content =~ legacy
+            gsub_file layout_path, legacy, toolbar_block
+            say_status :update, "upgraded toolbar to admin-gated render in #{layout_path}", :green
+          else
+            say_status :skip, "toolbar already present in #{layout_path} (left as-is)", :yellow
+          end
           return
         end
 

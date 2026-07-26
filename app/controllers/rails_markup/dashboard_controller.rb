@@ -223,10 +223,22 @@ module RailsMarkup
         # each (not find_each) so the export keeps the scope's :recent ordering —
         # find_each ignores ORDER BY and batches by primary key.
         scope.each do |ann|
-          csv << [ann.id, ann.status, ann.intent, ann.severity, ann.content, ann.page_url,
-                  ann.author_name, ann.selected_text, ann.created_at.iso8601, ann.updated_at.iso8601]
+          csv << [ann.id, ann.status, ann.intent, ann.severity,
+                  csv_safe(ann.content), csv_safe(ann.page_url),
+                  csv_safe(ann.author_name), csv_safe(ann.selected_text),
+                  ann.created_at.iso8601, ann.updated_at.iso8601]
         end
       end
+    end
+
+    # Neutralize CSV/spreadsheet formula injection: a leading =, +, -, @, or
+    # control char makes Excel/Sheets evaluate the cell as a formula. Prefix
+    # such values with an apostrophe so they're treated as literal text.
+    def csv_safe(value)
+      str = value.to_s
+      return str unless str.match?(/\A[=+\-@\t\r]/)
+
+      "'#{str}"
     end
   end
 end

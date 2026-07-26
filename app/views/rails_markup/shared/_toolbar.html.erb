@@ -1,5 +1,11 @@
 <%# Rails Markup annotation toolbar — self-contained, no Tailwind/Stimulus dependency %>
 <% if RailsMarkup.config.toolbar_enabled %>
+<%# Authorization sentinel: present only when this partial renders (i.e. the
+    layout gate authorized the request). The turbo:load handler below checks for
+    it after each navigation and tears the toolbar down if it's gone — otherwise
+    the document-level listener would recreate the toolbar (and expose cached
+    annotations) after a logout Turbo visit whose new body omits the partial. %>
+<span id="rm-toolbar-gate" hidden aria-hidden="true"></span>
 <script>
 <%== File.read(File.expand_path("../../../assets/javascripts/rails_markup/toolbar.js", __dir__)) %>
 </script>
@@ -19,9 +25,15 @@
     };
     // Init immediately (DOM is ready — script is at end of body)
     RailsMarkupToolbar.init(opts);
-    // Re-init after Turbo Drive navigations (DOMContentLoaded won't fire again)
+    // After Turbo Drive navigations (DOMContentLoaded won't fire again), only
+    // re-init when the new page is still authorized (gate sentinel present);
+    // otherwise tear the toolbar down so it can't persist past a logout.
     document.addEventListener("turbo:load", function() {
-      RailsMarkupToolbar.init(opts);
+      if (document.getElementById("rm-toolbar-gate")) {
+        RailsMarkupToolbar.init(opts);
+      } else if (window.RailsMarkupToolbar && typeof RailsMarkupToolbar.destroy === "function") {
+        RailsMarkupToolbar.destroy();
+      }
     });
   })();
 </script>

@@ -202,6 +202,17 @@ module RailsMarkup
       assert newer_line < older_line, "recent row must come before older row in the CSV export"
     end
 
+    test "export_csv neutralizes spreadsheet formula injection" do
+      Annotation.create!(content: "=1+2", page_url: "/csv", selected_text: "@SUM(A1)")
+
+      get rails_markup.export_csv_path(status: "all", page_url: "/csv")
+      assert_response :success
+
+      row = response.body.split("\n").find { |l| l.include?("1+2") }
+      assert_includes row, "'=1+2", "formula content must be prefixed with an apostrophe"
+      assert_includes row, "'@SUM(A1)", "formula selected_text must be prefixed with an apostrophe"
+    end
+
     test "export_json returns JSON file" do
       get rails_markup.export_json_path
       assert_response :success

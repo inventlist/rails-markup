@@ -44,4 +44,24 @@ class ToolbarSourceTest < Minitest::Test
     # `select:not(.browser-default){display:none}` can't hide the dropdowns.
     assert_includes source, "#rm-toolbar-root .rm-popup select { display:inline-block;"
   end
+
+  def test_press_events_are_suppressed_in_annotation_mode
+    source = File.read(File.join(ROOT, "app/assets/javascripts/rails_markup/toolbar.js"))
+
+    # _handleMouseDown must suppress the press so host controls don't act before
+    # mouseup/click is blocked (guarding the synthetic touch object).
+    handler = source[/_handleMouseDown\(event\).*?\n    \},/m]
+    assert handler, "_handleMouseDown not found"
+    assert_includes handler, "event.preventDefault()"
+    assert_includes handler, "event.stopPropagation()"
+  end
+
+  def test_turbo_load_tears_down_toolbar_when_gate_absent
+    partial = File.read(File.join(ROOT, "app/views/rails_markup/shared/_toolbar.html.erb"))
+
+    # A logout Turbo visit whose new body omits the partial (no gate sentinel)
+    # must tear the toolbar down instead of recreating it.
+    assert_includes partial, "rm-toolbar-gate"
+    assert_includes partial, "RailsMarkupToolbar.destroy()"
+  end
 end

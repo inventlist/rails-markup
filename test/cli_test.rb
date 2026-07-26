@@ -128,6 +128,26 @@ class CliTest < Minitest::Test
     assert_match(/No production token/, output)
   end
 
+  def test_fetch_production_over_http_is_refused
+    run_cli("configure", "--prod-url", "http://example.com", "--prod-token", "secret")
+    output = capture_output { run_cli("fetch", "production") }
+    assert_match(/insecure connection|must use HTTPS/i, output)
+    refute_match(/API error|Connection error/, output, "must not attempt the request over http")
+  end
+
+  def test_resolve_mcp_env_merges_scopes_instead_of_first_non_empty
+    # Regression guard: a local config with only dev values must not shadow
+    # production creds in global/codex. The merge walks scopes low→high
+    # precedence rather than returning the first non-empty config. (Asserted
+    # on source to avoid writing to the real ~/.claude / ~/.codex globals.)
+    source = File.read(File.expand_path("../lib/rails_markup/cli.rb", __dir__))
+    merge_body = source[/def resolve_mcp_env.*?\n    end/m]
+    assert merge_body, "resolve_mcp_env not found"
+    assert_includes merge_body, "reverse_each"
+    refute_includes merge_body, "return env unless env.empty?",
+      "must merge scopes, not return the first non-empty config"
+  end
+
   # -- McpConfig detect_command --
 
   def test_mcp_json_uses_bin_markup_when_present

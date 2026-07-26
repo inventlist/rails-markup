@@ -9,8 +9,9 @@ module RailsMarkup
   class Server
     attr_reader :store
 
-    def initialize(port: 4747, mcp_only: false)
+    def initialize(port: 4747, bind: "127.0.0.1", mcp_only: false)
       @port     = port
+      @bind     = bind
       @mcp_only = mcp_only
       @store    = Store.new
     end
@@ -44,8 +45,8 @@ module RailsMarkup
       if port_available?(@port)
         # We own the port — start HTTP + MCP with shared in-memory store
         http_thread = Thread.new do
-          http = HttpServer.new(store: @store, port: @port)
-          $stderr.puts "[rails-markup] HTTP server listening on port #{@port}"
+          http = HttpServer.new(store: @store, port: @port, bind: @bind)
+          $stderr.puts "[rails-markup] HTTP server listening on #{@bind}:#{@port}"
           http.start
         end
 
@@ -63,7 +64,7 @@ module RailsMarkup
     end
 
     def port_available?(port)
-      server = TCPServer.new("0.0.0.0", port)
+      server = TCPServer.new(@bind, port)
       server.close
       true
     rescue Errno::EADDRINUSE

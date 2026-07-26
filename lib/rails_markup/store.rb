@@ -214,6 +214,17 @@ module RailsMarkup
           false
         end
       end
+
+      # Hard cap: if every session is still fresh we'd otherwise grow without
+      # bound. Evict the oldest sessions to make room for the incoming one.
+      return if @sessions.size < MAX_SESSIONS
+
+      overflow = @sessions.size - MAX_SESSIONS + 1
+      oldest = @sessions.values.sort_by(&:created_at).first(overflow)
+      oldest.each do |session|
+        session.annotations.each { |a| @annotations_index.delete(a.id) }
+        @sessions.delete(session.id)
+      end
     end
   end
 end

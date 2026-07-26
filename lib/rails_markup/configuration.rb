@@ -15,6 +15,13 @@ module RailsMarkup
     # Set to nil to disable external API.
     attr_accessor :api_token
 
+    # In development the external API skips token auth by default so you can
+    # reach it from another device on your LAN (e.g. your phone). That allows
+    # unauthenticated reads AND writes from any network peer. Set to true to
+    # require the bearer token even in development.
+    # Default: false (open in development)
+    attr_accessor :require_api_token_in_development
+
     # Database table name for annotations.
     attr_accessor :table_name
 
@@ -77,6 +84,7 @@ module RailsMarkup
     def initialize
       @base_controller_class = "RailsMarkup::ApplicationController"
       @api_token = nil
+      @require_api_token_in_development = false
       @table_name = "rails_markup_annotations"
       @per_page = 25
       @toolbar_accent = "indigo"

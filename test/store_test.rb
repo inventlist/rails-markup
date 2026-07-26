@@ -203,4 +203,14 @@ class StoreTest < Minitest::Test
     @store.create_annotation(session_id: session.id, target: "div", content: "test")
     assert_equal 0, events.size
   end
+
+  def test_session_count_is_hard_capped_even_when_all_are_fresh
+    (RailsMarkup::Store::MAX_SESSIONS + 25).times do |i|
+      @store.create_session(url: "http://example.com/#{i}")
+    end
+
+    count = @store.instance_variable_get(:@sessions).size
+    assert_operator count, :<=, RailsMarkup::Store::MAX_SESSIONS,
+      "fresh sessions must still be evicted at the hard cap"
+  end
 end

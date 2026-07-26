@@ -381,7 +381,7 @@
       this._boundMouseUp = (e) => self._handleMouseUp(e);
       this._boundClick = (e) => self._handleClick(e);
       this._boundKeyDown = (e) => self._handleKeyDown(e);
-      this._boundTouchStart = (e) => { if (self.active && e.touches[0]) { const t = e.touches[0]; self._handleMouseDown({ clientX: t.clientX, clientY: t.clientY }); } };
+      this._boundTouchStart = (e) => { if (self.active && e.touches[0]) { const t = e.touches[0]; const el = document.elementFromPoint(t.clientX, t.clientY); if (el && !self._isToolbar(el) && e.cancelable) e.preventDefault(); self._handleMouseDown({ clientX: t.clientX, clientY: t.clientY }); } };
       this._boundTouchEnd = (e) => { if (self.active && e.changedTouches[0]) { const t = e.changedTouches[0]; const el = document.elementFromPoint(t.clientX, t.clientY); if (el && !self._isToolbar(el)) { e.preventDefault(); self._handleMouseUp({ clientX: t.clientX, clientY: t.clientY, preventDefault(){}, stopPropagation(){} }); } } };
 
       // Turbo Frames — partial DOM update, reposition pins
@@ -512,7 +512,14 @@
 
     _handleMouseDown(event) {
       const el = document.elementFromPoint(event.clientX, event.clientY);
-      if (el && !this._isToolbar(el)) this.clickedElement = el;
+      if (el && !this._isToolbar(el)) {
+        this.clickedElement = el;
+        // Suppress the press so host controls (buttons, drag handles, form
+        // fields) don't act before mouseup/click is blocked. Guard for the
+        // synthetic object passed from the touchstart handler.
+        if (typeof event.preventDefault === "function") event.preventDefault();
+        if (typeof event.stopPropagation === "function") event.stopPropagation();
+      }
     },
 
     async _handleMouseUp(event) {

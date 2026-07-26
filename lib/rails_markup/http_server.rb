@@ -9,15 +9,22 @@ module RailsMarkup
   class HttpServer
     attr_reader :port, :store
 
-    def initialize(store:, port: 4747, logger: nil)
+    attr_reader :bind
+
+    def initialize(store:, port: 4747, bind: "127.0.0.1", logger: nil)
       @store  = store
       @port   = port
+      @bind   = bind
       @logger = logger || WEBrick::Log.new($stderr, WEBrick::Log::WARN)
     end
 
     def start
+      # Bind to loopback by default — this store server is unauthenticated, so
+      # binding to 0.0.0.0 would expose it to the whole LAN. Pass bind: "0.0.0.0"
+      # (bin/markup server --host 0.0.0.0) to deliberately expose it.
       @server = WEBrick::HTTPServer.new(
         Port: @port,
+        BindAddress: @bind,
         Logger: @logger,
         AccessLog: [],
         DoNotReverseLookup: true

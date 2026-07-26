@@ -54,8 +54,11 @@ module RailsMarkup
       end
 
       def authenticate_token!
-        # Development — allow all requests without token (dev server may bind to LAN IP)
-        return if Rails.env.development?
+        # Development convenience: skip token auth so you can reach the API from
+        # another device on your LAN. This permits unauthenticated reads and
+        # writes from any network peer — set
+        # config.require_api_token_in_development to lock it down.
+        return if Rails.env.development? && !RailsMarkup.config.require_api_token_in_development
 
         token = RailsMarkup.config.api_token
         return head(:not_found) if token.nil?

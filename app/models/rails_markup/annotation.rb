@@ -114,28 +114,35 @@ module RailsMarkup
     end
 
     def resolve!(summary: nil)
-      return self if status == "resolved" # idempotent — re-resolving is a no-op
-      raise "Cannot resolve a #{status} annotation" unless status.in?(%w[pending acknowledged])
+      # with_lock reloads under a row lock so a concurrent reply/resolve can't
+      # read a stale thread and silently drop the other write on save.
+      with_lock do
+        return self if status == "resolved" # idempotent — re-resolving is a no-op
+        raise "Cannot resolve a #{status} annotation" unless status.in?(%w[pending acknowledged])
 
-      transaction do
         add_thread_entry(role: "agent", message: summary) if summary.present?
         update!(status: "resolved")
       end
+      self
     end
 
     def dismiss!(reason: nil)
-      return self if status == "dismissed" # idempotent — re-dismissing is a no-op
-      raise "Cannot dismiss a #{status} annotation" unless status.in?(%w[pending acknowledged])
+      with_lock do
+        return self if status == "dismissed" # idempotent — re-dismissing is a no-op
+        raise "Cannot dismiss a #{status} annotation" unless status.in?(%w[pending acknowledged])
 
-      transaction do
         add_thread_entry(role: "agent", message: reason) if reason.present?
         update!(status: "dismissed")
       end
+      self
     end
 
     def add_reply!(message:, role: "agent")
-      add_thread_entry(role: role, message: message)
-      save!
+      with_lock do
+        add_thread_entry(role: role, message: message)
+        save!
+      end
+      self
     end
 
     def as_api_json

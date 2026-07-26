@@ -5,7 +5,10 @@ class CreateRailsMarkupAnnotations < ActiveRecord::Migration<%= migration_versio
 
     create_table :<%= options[:table_name] %> do |t|
       t.bigint :user_id
-      t.string :page_url, null: false
+      # 2048 to match the model's page_url length validation. The default
+      # string limit (255) would raise DB errors on PostgreSQL/MySQL for
+      # model-valid long URLs (SQLite is lax, so tests wouldn't catch it).
+      t.string :page_url, limit: 2048, null: false
       t.send json_type, :target, default: {}
       t.text :content, null: false
       t.string :intent, null: false, default: "change"
@@ -20,7 +23,13 @@ class CreateRailsMarkupAnnotations < ActiveRecord::Migration<%= migration_versio
     end
 
     add_index :<%= options[:table_name] %>, [:status, :created_at]
-    add_index :<%= options[:table_name] %>, :page_url
+    # A full 2048-char index blows past MySQL/InnoDB's key-length limit on
+    # utf8mb4, so index only a prefix there; other adapters index the column.
+    if connection.adapter_name.downcase.include?("mysql")
+      add_index :<%= options[:table_name] %>, :page_url, length: 191
+    else
+      add_index :<%= options[:table_name] %>, :page_url
+    end
     add_index :<%= options[:table_name] %>, :user_id
     add_index :<%= options[:table_name] %>, :client_uuid, unique: true
   end

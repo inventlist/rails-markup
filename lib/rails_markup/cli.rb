@@ -39,8 +39,10 @@ module RailsMarkup
         bin/markup server --port 5000   # custom port
     DESC
     method_option :port, type: :numeric, default: 4747, desc: "HTTP server port"
+    method_option :host, type: :string, default: "127.0.0.1",
+      desc: "Bind address (loopback by default; use 0.0.0.0 to expose on the LAN)"
     def server
-      srv = RailsMarkup::Server.new(port: options[:port])
+      srv = RailsMarkup::Server.new(port: options[:port], bind: options[:host])
       srv.start
     end
 
@@ -641,17 +643,25 @@ module RailsMarkup
       "local"
     end
 
-    # Check local first, then fall back to global/codex configs.
+    # Merge configs per-key with local taking precedence over global over codex.
+    # Merging (rather than returning the first non-empty config) means a local
+    # config that only defines dev values doesn't shadow production credentials
+    # stored globally or in the codex config.
     def resolve_mcp_env
-      McpConfig::SCOPES.each do |scope|
+      merged = {}
+      # Reverse so the highest-precedence scope (local) is applied last and wins.
+      McpConfig::SCOPES.reverse_each do |scope|
         config = McpConfig.new(scope: scope)
         next unless config.exist?
 
-        env = config.raw_env
-        return env unless env.empty?
+        # Skip blank values so an empty key in a higher-precedence config
+        # doesn't clobber a real value from a lower-precedence one.
+        config.raw_env.each do |key, value|
+          merged[key] = value unless value.to_s.strip.empty?
+        end
       end
 
-      {}
+      merged
     end
 
     def resolve_env(production)
@@ -671,6 +681,12 @@ module RailsMarkup
         unless token
           say "No production token configured.", :red
           say "  bin/markup configure --prod-token TOKEN"
+          return nil
+        end
+
+        unless base_url.to_s.downcase.start_with?("https://")
+          say "Refusing to send the production token over an insecure connection.", :red
+          say "Production URL must use HTTPS (got: #{base_url})", :red
           return nil
         end
 

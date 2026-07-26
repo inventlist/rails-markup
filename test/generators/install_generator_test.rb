@@ -180,6 +180,31 @@ class InstallGeneratorTest < ActiveSupport::TestCase
     # exists, so the toolbar does not ship to logged-out/non-admin users
     # (issue #3).
     assert_match(/current_user\.admin\?/, source)
-    refute_match(/lookup_context\.exists\?/, source)
+    # Re-running upgrades an old lookup_context gate (only the generated block
+    # is matched to detect the legacy install; it is not re-emitted).
+    assert_match(/legacy\s*=.*lookup_context/m, source)
+  end
+
+  test "generator upgrades a legacy public toolbar block on re-run" do
+    source = File.read(File.expand_path(
+      "../../lib/generators/rails_markup/install_generator.rb", __dir__
+    ))
+
+    # The pre-1.2.3 block rendered for every visitor; re-running must replace it
+    # rather than skip (incomplete-fix follow-up to issue #3).
+    assert_match(/gsub_file layout_path, legacy, toolbar_block/, source)
+  end
+
+  test "migration schema gives page_url a 2048 limit with an adapter-safe index" do
+    template_path = File.expand_path(
+      "../../lib/generators/rails_markup/install/templates/create_rails_markup_annotations.rb.erb",
+      __dir__
+    )
+    content = File.read(template_path)
+
+    assert_match(/t\.string :page_url, limit: 2048/, content)
+    # A full 2048 index exceeds MySQL/InnoDB key length on utf8mb4 → prefix it.
+    assert_match(/mysql/, content)
+    assert_match(/length: 191/, content)
   end
 end
