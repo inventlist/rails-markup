@@ -6,7 +6,14 @@ All notable changes to this project will be documented in this file.
 
 Third-round audit hardening: concurrency, credential provenance, and a safe upgrade path for the browser sync protocol.
 
-**Upgrade note:** this release adds a `revision` column to the annotations table. Run `rails db:migrate` after upgrading (the engine ships the migration). The browser toolbar now sends a `baseRevision` and handles `409 Conflict` by re-pulling; the bundled toolbar and server upgrade together.
+**Upgrade note:** this release adds a `revision` column to the annotations table. Engine migrations are not auto-run, so copy then migrate:
+
+```bash
+bin/rails railties:install:migrations FROM=rails_markup
+bin/rails db:migrate
+```
+
+The browser toolbar now sends a `baseRevision` and handles `409 Conflict` by re-pulling; the bundled toolbar and server upgrade together.
 
 ### Security
 

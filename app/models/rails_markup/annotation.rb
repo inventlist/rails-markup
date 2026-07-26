@@ -26,6 +26,10 @@ module RailsMarkup
     LEGACY_SESSION_PATTERN = /\Arm-[0-9a-f]{16}\z/i
     LEGACY_CLIENT_ID_LIMIT = 256
     LEGACY_UUID_NAMESPACE = "265e7cf0-8be6-5e21-8f31-a582cfde8646"
+    # Bound thread growth so large or many reply/summary/reason messages (incl.
+    # via the MCP tools) can't grow a row without limit.
+    MAX_THREAD_ENTRIES = 500
+    MAX_THREAD_MESSAGE = 5000
 
     # Optional user association — no FK constraint, engine doesn't know host users table
     belongs_to :user, optional: true
@@ -45,6 +49,7 @@ module RailsMarkup
     validates :severity, inclusion: { in: SEVERITIES }
     validates :status, inclusion: { in: STATUSES }
     validate :thread_must_be_array
+    validate :thread_within_limits
 
     def self.valid_client_uuid?(value)
       value.is_a?(String) && CLIENT_UUID_PATTERN.match?(value)
@@ -207,6 +212,16 @@ module RailsMarkup
 
     def thread_must_be_array
       errors.add(:thread, "must be an array") unless thread.is_a?(Array)
+    end
+
+    def thread_within_limits
+      return unless thread.is_a?(Array)
+
+      errors.add(:thread, "cannot exceed #{MAX_THREAD_ENTRIES} entries") if thread.size > MAX_THREAD_ENTRIES
+
+      if thread.any? { |entry| entry.is_a?(Hash) && entry["message"].to_s.length > MAX_THREAD_MESSAGE }
+        errors.add(:thread, "entry message cannot exceed #{MAX_THREAD_MESSAGE} characters")
+      end
     end
   end
 end

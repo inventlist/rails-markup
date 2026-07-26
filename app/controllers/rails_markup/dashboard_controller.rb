@@ -106,7 +106,10 @@ module RailsMarkup
         return redirect_to root_path, alert: "Invalid status for bulk dismiss."
       end
 
-      count = Annotation.where(status: status).update_all(status: "dismissed")
+      # Bump revision per row so a stale toolbar edit (which checks baseRevision)
+      # conflicts (409) instead of silently overwriting this bulk dismiss.
+      count = Annotation.where(status: status)
+        .update_all("status = 'dismissed', revision = revision + 1")
       redirect_to root_path(status: "dismissed"), notice: "#{count} annotations dismissed."
     end
 
@@ -122,7 +125,11 @@ module RailsMarkup
       when "transition"
         new_status = params[:status]
         if Annotation::STATUSES.include?(new_status)
-          @annotation.update!(status: new_status)
+          # Lock + bump revision so a concurrent toolbar edit conflicts (409)
+          # instead of this board move silently losing to (or clobbering) it.
+          @annotation.with_lock do
+            @annotation.update!(status: new_status, revision: @annotation.revision + 1)
+          end
           return head :ok
         else
           return render json: { error: "invalid status" }, status: :unprocessable_entity

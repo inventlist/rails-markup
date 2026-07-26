@@ -159,6 +159,28 @@ module RailsMarkup
       assert_equal "acknowledged", annotation.reload.status
     end
 
+    test "transition bumps revision so stale toolbar edits conflict" do
+      annotation = annotations(:pending_fix)
+      before = annotation.revision
+
+      patch rails_markup.annotation_path(annotation),
+        params: { action_type: "transition", status: "acknowledged" },
+        as: :json
+
+      assert_response :ok
+      assert_equal before + 1, annotation.reload.revision
+    end
+
+    test "dismiss_all bumps revision on each affected row" do
+      a = Annotation.create!(content: "bulk one", page_url: "/b", status: "pending")
+      before = a.revision
+
+      post rails_markup.dismiss_all_path(status: "pending")
+
+      assert_equal "dismissed", a.reload.status
+      assert_equal before + 1, a.revision
+    end
+
     test "transition with invalid status returns error" do
       annotation = annotations(:pending_fix)
 

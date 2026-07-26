@@ -462,6 +462,20 @@ module RailsMarkup
       assert_nil json[:authorName]
     end
 
+    test "thread rejects too many entries" do
+      annotation = annotations(:pending_fix)
+      annotation.thread = Array.new(Annotation::MAX_THREAD_ENTRIES + 1) { { "role" => "agent", "message" => "x" } }
+      assert_not annotation.valid?
+      assert_includes annotation.errors[:thread].join, "entries"
+    end
+
+    test "thread rejects an oversized entry message" do
+      annotation = annotations(:pending_fix)
+      annotation.thread = [{ "role" => "agent", "message" => "x" * (Annotation::MAX_THREAD_MESSAGE + 1) }]
+      assert_not annotation.valid?
+      assert_includes annotation.errors[:thread].join, "characters"
+    end
+
     test "as_api_json includes thread entries for resolved annotation" do
       json = annotations(:resolved_fix).as_api_json
 
