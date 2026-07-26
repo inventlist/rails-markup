@@ -1197,6 +1197,8 @@
 
         if (result.kind === "success") {
           if (!this._outboxEntryMatches(snapshot)) {
+            const supersedingDelete = this._advanceSupersedingDeleteBaseRevision(snapshot, result.data);
+            if (supersedingDelete === "failed") break;
             clientIds.push(clientId);
             continue;
           }
@@ -1240,6 +1242,25 @@
         this._scheduleSyncRetry(result.retryAfter);
         break;
       }
+    },
+
+    _advanceSupersedingDeleteBaseRevision(snapshot, server) {
+      const current = this.outbox[snapshot.clientId];
+      const supersedesUpsert = snapshot.type === "upsert"
+        && current?.type === "delete"
+        && current.clientId === snapshot.clientId
+        && Number.isInteger(current.revision)
+        && current.revision > snapshot.revision
+        && Number.isInteger(server?.revision);
+      if (!supersedesUpsert) return "not-applicable";
+
+      const tombstone = this._immutableCopy(current);
+      const committed = this._commitLocalStateChange(() => {
+        if (!this._outboxEntryMatches(tombstone)) return;
+        const baseRevision = Number.isInteger(tombstone.baseRevision) ? tombstone.baseRevision : 0;
+        this.outbox[snapshot.clientId].baseRevision = Math.max(baseRevision, server.revision);
+      });
+      return committed ? "advanced" : "failed";
     },
 
     async _sendOutboxEntry(snapshot) {
@@ -1434,12 +1455,20 @@
             if (annotation) annotation.syncState = "failed";
             return;
           }
+          if (!annotation) {
+            entry.syncState = "failed";
+            return;
+          }
+          // Recreate once from the complete desired browser state. Replaying a
+          // narrow edit delta onto a new row can omit required fields and lose
+          // the user's annotation to a permanent validation failure.
+          annotation.dirtyFields = this._legacyDirtyFields(annotation);
+          entry.annotation = this._desiredState(annotation);
+          entry.dirtyFields = annotation.dirtyFields.slice();
           entry.baseRevision = 0;
           entry.missingConflictRebased = true;
-          if (annotation) {
-            annotation.serverId = null;
-            annotation.serverRevision = 0;
-          }
+          annotation.serverId = null;
+          annotation.serverRevision = 0;
           resolution = "retry";
           return;
         }

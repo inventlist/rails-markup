@@ -249,27 +249,77 @@ test("an edit replacing an in-flight upsert is neither cleared nor overwritten",
 });
 
 test("a delete replacing an in-flight upsert is not resurrected by the older response", async (t) => {
-  const annotation = localAnnotation();
-  const fetch = createFakeFetch();
-  const pending = fetch.defer();
-  const replacement = fetch.defer();
-  const harness = flushHarness({ annotations: [annotation], outbox: { [firstId]: upsertEntry(annotation) }, fetch });
+  const annotation = localAnnotation(firstId, {
+    serverId: "101",
+    serverRevision: 4,
+    comment: "Edited locally"
+  });
+  const calls = [];
+  let server = serverRepresentation(annotation, { content: "Before edit", revision: 4 });
+  let completePut;
+  let completeDelete;
+  const fetch = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (options.method === "PUT") {
+      return await new Promise(resolve => {
+        completePut = () => {
+          server = serverRepresentation(annotation, { content: "Edited locally", revision: 5 });
+          resolve(new Response(JSON.stringify(server), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          }));
+        };
+      });
+    }
+    if (options.method === "DELETE") {
+      const { baseRevision } = JSON.parse(options.body);
+      return await new Promise(resolve => {
+        completeDelete = () => {
+          if (!Number.isInteger(baseRevision) || baseRevision < 0) {
+            resolve(new Response(JSON.stringify({ error: "base revision must be a non-negative integer" }), {
+              status: 422,
+              headers: { "Content-Type": "application/json" }
+            }));
+            return;
+          }
+          if (server && baseRevision !== server.revision) {
+            resolve(new Response(JSON.stringify({ error: "revision conflict", annotation: server }), {
+              status: 409,
+              headers: { "Content-Type": "application/json" }
+            }));
+            return;
+          }
+          server = null;
+          resolve(new Response(null, { status: 204 }));
+        };
+      });
+    }
+    return new Response(JSON.stringify(server ? [server] : []), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  };
+  fetch.calls = calls;
+  const entry = upsertEntry(annotation, { baseRevision: 4 });
+  const harness = flushHarness({ annotations: [annotation], outbox: { [firstId]: entry }, fetch });
   t.after(() => harness.reset());
 
   const flush = harness.toolbar._flushOutbox();
-  assert.equal(fetch.calls.length, 1);
+  assert.equal(calls.length, 1);
   harness.toolbar._deleteAnnotation(annotation.id);
-  pending.respondWith(serverRepresentation(annotation));
+  completePut();
   await nextTurn();
 
   assert.equal(harness.toolbar.annotations.length, 0);
   assert.equal(harness.toolbar.outbox[firstId].type, "delete");
   assert.equal(harness.toolbar.outbox[firstId].revision, 2);
-  assert.equal(fetch.calls.length, 2);
-  assert.equal(fetch.calls[1].options.method, "DELETE");
-  assert.equal(JSON.parse(fetch.calls[1].options.body).baseRevision, 0);
-  replacement.respondWith({}, { status: 204 });
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].options.method, "DELETE");
+  assert.equal(JSON.parse(calls[1].options.body).baseRevision, 5);
+  assert.equal(harness.storageDocument().outbox[firstId].baseRevision, 5);
+  completeDelete();
   await flush;
+  assert.equal(server, null);
   assert.equal(harness.toolbar.outbox[firstId], undefined);
 });
 
@@ -370,6 +420,42 @@ test("missing-record 409 rebases once and then stops automatic conflict retries"
   assert.equal(harness.toolbar.outbox[firstId].syncState, "failed");
   assert.equal(harness.toolbar.annotations[0].syncState, "failed");
   assert.equal(harness.toolbar._syncRetryTimer, null);
+});
+
+test("missing-record 409 recreates a normally edited annotation from its complete desired state", async (t) => {
+  const annotation = localAnnotation(firstId, {
+    serverId: "101",
+    serverRevision: 2,
+    dirtyFields: ["severity"],
+    severity: "important",
+    status: "acknowledged"
+  });
+  const entry = upsertEntry(annotation, { baseRevision: 2 });
+  const fetch = createFakeFetch();
+  fetch.respondWith({ error: "revision conflict", annotation: null }, { status: 409 });
+  fetch.respondWith([]);
+  fetch.respondWith(serverRepresentation(annotation, {
+    id: "202",
+    revision: 1,
+    severity: "important",
+    status: "acknowledged"
+  }));
+  const harness = flushHarness({ annotations: [annotation], outbox: { [firstId]: entry }, fetch });
+  t.after(() => harness.reset());
+
+  await harness.toolbar._flushOutbox();
+
+  assert.equal(fetch.calls.length, 3);
+  const recreation = JSON.parse(fetch.calls[2].options.body);
+  assert.equal(recreation.baseRevision, 0);
+  assert.equal(recreation.content, annotation.comment);
+  assert.equal(recreation.page_url, annotation.pageUrl);
+  assert.deepEqual(recreation.dirtyFields, [
+    "content", "intent", "severity", "selected_text", "target", "page_url", "metadata", "status"
+  ]);
+  assert.equal(harness.toolbar.outbox[firstId], undefined);
+  assert.equal(harness.toolbar.annotations[0].serverId, "202");
+  assert.equal(harness.toolbar.annotations[0].serverRevision, 1);
 });
 
 test("DELETE accepts any successful response without requiring a representation", async (t) => {

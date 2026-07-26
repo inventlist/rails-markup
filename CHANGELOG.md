@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.2] - 2026-07-26
+
+Fifth-round audit follow-ups — closes two client-side sync-reconciliation races. Toolbar-only; no server or schema change.
+
+### Fixed
+
+- **Delete-while-a-PUT-is-in-flight no longer resurrects the record:** when a superseded upsert succeeds, the causally-later tombstone's `baseRevision` is durably advanced to the server's new revision before the DELETE is sent, so the delete applies at the right revision instead of hitting a stale `409` that restored the annotation.
+- **A deleted-then-edited annotation recreates correctly:** on the single permitted missing-record retry (`409` with `annotation: null`), the toolbar now resends the complete desired state with all required fields, instead of replaying a narrow edit delta that failed validation and left the outbox permanently stuck.
+- Corrected the in-flight-delete test to model the real DELETE `409`/`204` revision contract (it previously mocked an impossible `204`, masking the race above).
+
 ## [1.4.1] - 2026-07-26
 
 Fourth-round audit follow-ups — completes the revision protocol and closes concurrency edges. No schema change (1.4.0's migration still applies).
