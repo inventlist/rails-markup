@@ -33,6 +33,24 @@ bin/rails railties:install:migrations FROM=rails_markup
 bin/rails db:migrate
 ```
 
+### Compatibility: `connection_pool` 3.x
+
+Rails Markup does **not** use Redis or `connection_pool`. However, Rails 7.2 and
+Rails 8.0 apps configured with `:redis_cache_store` fail to boot against
+`connection_pool` 3.x (released Dec 2025): Active Support passes pool options as
+a positional hash, while `connection_pool` 3 requires keyword arguments, raising
+`ArgumentError: wrong number of arguments (given 1, expected 0)` during
+`Rails.application.initialize!`. This is an upstream Rails/`connection_pool`
+incompatibility (fixed in Rails 8.1), unrelated to this gem — but because it
+breaks boot, it will also break `bin/dev`, `db:migrate`, and the migration-copy
+step above whenever this gem happens to be installed.
+
+If you hit it, pin the dependency in your app's Gemfile until you're on Rails 8.1+:
+
+```ruby
+gem "connection_pool", "< 3.0"
+```
+
 ### Rails Markup 1.2 rolling UUID upgrade
 
 The 1.2 upgrade migration adds, repairs, and uniquely indexes `client_uuid`, but
