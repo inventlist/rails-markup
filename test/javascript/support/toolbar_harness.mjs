@@ -1,11 +1,14 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Window } from "happy-dom";
 
 import { createFakeFetch } from "./fake_fetch.mjs";
 
-const toolbarPath = fileURLToPath(new URL("../../../app/assets/javascripts/rails_markup/toolbar.js", import.meta.url));
-const toolbarSource = await readFile(toolbarPath, "utf8");
+const toolbarDir = fileURLToPath(new URL("../../../app/assets/javascripts/rails_markup/toolbar/", import.meta.url));
+const toolbarFiles = (await readdir(toolbarDir)).filter(file => file.endsWith(".js")).sort();
+const toolbarSource = (await Promise.all(
+  toolbarFiles.map(file => readFile(toolbarDir + file, "utf8"))
+)).join("\n");
 
 export function createToolbarHarness(options = {}) {
   const window = new Window({ url: options.url || "https://example.test/" });
