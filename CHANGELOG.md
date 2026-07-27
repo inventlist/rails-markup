@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.4] - 2026-07-27
+
+Internal refactor only — no behavior change.
+
+### Changed
+
+- The browser toolbar source is split from a single ~2,600-line `toolbar.js` into focused modules under `app/assets/javascripts/rails_markup/toolbar/` (`00-core`, `10-styles`, `20-dom`, `30-menu`, `40-events`, `50-sync`, `60-render`, `90-init`). They are concatenated in order into the same single inline `<script>` by `RailsMarkup::ToolbarSource` (and identically by the JS test harness) — still no bundler, no build step, self-contained in any Rails app. The shipped/executed script is unchanged.
+
 ## [1.4.3] - 2026-07-27
 
 Fixes #4 — annotation popup/status dropdowns no longer break under host UI frameworks. Community contribution by @hughg12311, with review follow-ups.
