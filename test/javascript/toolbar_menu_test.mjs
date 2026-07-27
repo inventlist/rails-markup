@@ -53,6 +53,9 @@ test("keyboard navigation changes the hidden intent value and visible label", (t
   trigger.click();
 
   assert.equal(trigger.getAttribute("aria-expanded"), "true");
+  assert.ok(list.parentElement === harness.window.document.getElementById("rm-toolbar-root"));
+  assert.equal(menu.contains(list), false);
+  assert.equal(list.closest(".rm-popup"), null);
   assert.equal(harness.window.document.activeElement.dataset.value, "change");
 
   keydown(harness.window, harness.window.document.activeElement, "ArrowDown");
@@ -63,6 +66,35 @@ test("keyboard navigation changes the hidden intent value and visible label", (t
   assert.equal(menu.querySelector(".rm-menu-label").textContent, "Question");
   assert.equal(list.classList.contains("rm-menu-open"), false);
   assert.equal(trigger.getAttribute("aria-expanded"), "false");
+  assert.ok(harness.window.document.activeElement === trigger);
+  assert.ok(list.parentElement === menu);
+});
+
+test("ArrowUp and Home/End navigate a portaled menu and Space selects", (t) => {
+  const harness = createToolbarHarness();
+  t.after(() => harness.reset());
+  injectToolbar(harness);
+
+  const input = harness.window.document.getElementById("rm-intent-select");
+  const menu = input.closest(".rm-menu");
+  const trigger = menu.querySelector(".rm-menu-btn");
+  const list = menu.querySelector(".rm-menu-list");
+
+  trigger.click();
+  keydown(harness.window, harness.window.document.activeElement, "ArrowUp");
+  assert.equal(harness.window.document.activeElement.dataset.value, "fix");
+  keydown(harness.window, harness.window.document.activeElement, "ArrowUp");
+  assert.equal(harness.window.document.activeElement.dataset.value, "approve");
+  keydown(harness.window, harness.window.document.activeElement, "Home");
+  assert.equal(harness.window.document.activeElement.dataset.value, "fix");
+  keydown(harness.window, harness.window.document.activeElement, "End");
+  assert.equal(harness.window.document.activeElement.dataset.value, "approve");
+  keydown(harness.window, harness.window.document.activeElement, " ");
+
+  assert.equal(input.value, "approve");
+  assert.equal(menu.querySelector(".rm-menu-label").textContent, "Approve");
+  assert.equal(list.classList.contains("rm-menu-open"), false);
+  assert.ok(list.parentElement === menu);
   assert.ok(harness.window.document.activeElement === trigger);
 });
 
@@ -146,8 +178,9 @@ test("compact status menu updates its hidden value and visible label", (t) => {
 
   const input = harness.window.document.querySelector('[data-status-id="7"]');
   const menu = input.closest(".rm-menu");
+  const list = menu.querySelector(".rm-menu-list");
   menu.querySelector(".rm-menu-btn").click();
-  menu.querySelector('[data-value="resolved"]').click();
+  list.querySelector('[data-value="resolved"]').click();
 
   assert.equal(input.value, "resolved");
   assert.equal(menu.querySelector(".rm-menu-label").textContent, "Resolved");
@@ -172,21 +205,28 @@ test("open menus use fixed viewport positioning and close on panel scroll", (t) 
 
   trigger.click();
 
+  assert.ok(list.parentElement === harness.window.document.getElementById("rm-toolbar-root"));
+  assert.equal(menu.contains(list), false);
+  assert.equal(list.closest(".rm-panel"), null);
   assert.equal(list.style.position, "fixed");
   assert.equal(list.style.top, "128px");
   assert.equal(list.style.left, "100px");
   assert.equal(list.style.minWidth, "120px");
+  assert.equal(list.style.pointerEvents, "auto");
 
   harness.window.document.getElementById("rm-panel-list")
     .dispatchEvent(new harness.window.Event("scroll"));
 
   assert.equal(list.classList.contains("rm-menu-open"), false);
+  assert.ok(list.parentElement === menu);
   assert.equal(list.style.position, "");
   assert.equal(list.style.top, "");
   assert.equal(list.style.left, "");
+  assert.equal(list.style.pointerEvents, "");
 
   trigger.click();
   harness.window.dispatchEvent(new harness.window.Event("resize"));
   assert.equal(list.classList.contains("rm-menu-open"), false);
+  assert.ok(list.parentElement === menu);
   assert.equal(list.style.position, "");
 });

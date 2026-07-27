@@ -106,6 +106,7 @@
     },
 
     destroy() {
+      this._closeAllMenus();
       this._deactivateMode();
       if (this.sseSource) { this.sseSource.close(); this.sseSource = null; }
       if (this.healthInterval) { clearInterval(this.healthInterval); this.healthInterval = null; }
@@ -135,6 +136,8 @@
         this._boundMenuDocClick = null;
       }
       if (this._boundMenuViewportChange) {
+        document.getElementById("rm-panel-list")
+          ?.removeEventListener("scroll", this._boundMenuViewportChange);
         window.removeEventListener("resize", this._boundMenuViewportChange);
         window.removeEventListener("scroll", this._boundMenuViewportChange);
         this._boundMenuViewportChange = null;
@@ -186,8 +189,8 @@
         #rm-toolbar-root .rm-menu-option:hover, #rm-toolbar-root .rm-menu-option:focus { background:#f3f4f6; outline:none; }
         #rm-toolbar-root .rm-menu-option-active { background:#eef2ff; color:#4338ca; }
         #rm-toolbar-root .rm-menu-compact .rm-menu-btn { font-size:10px; padding:2px 6px; border-radius:4px; color:#6b7280; }
-        #rm-toolbar-root .rm-menu-compact .rm-menu-list { min-width:120px; right:0; left:auto; }
-        #rm-toolbar-root .rm-menu-compact .rm-menu-option { font-size:10px; padding:5px 8px; }
+        #rm-toolbar-root .rm-menu-compact .rm-menu-list, #rm-toolbar-root .rm-menu-list-compact { min-width:120px; right:0; left:auto; }
+        #rm-toolbar-root .rm-menu-compact .rm-menu-option, #rm-toolbar-root .rm-menu-list-compact .rm-menu-option { font-size:10px; padding:5px 8px; }
         .rm-popup-el { font-size:11px; color:#9ca3af; font-family:monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.4; }
         .rm-popup-text { font-size:12px; color:#6b7280; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; line-height:1.4; }
         .rm-popup-actions { display:flex; align-items:center; gap:8px; margin-top:8px; }
@@ -353,16 +356,16 @@
         if (btn) {
           e.preventDefault();
           e.stopPropagation();
-          const menu = btn.closest(".rm-menu");
+          const menu = this._menuForElement(btn);
           if (!menu || !this.root.contains(menu)) return;
           this._toggleMenu(menu);
           return;
         }
-        if (!e.target.closest(".rm-menu")) this._closeAllMenus();
+        if (!this._menuForElement(e.target)) this._closeAllMenus();
       });
       if (!this._boundMenuDocClick) {
         this._boundMenuDocClick = (e) => {
-          if (!this.root || e.target.closest("#rm-toolbar-root .rm-menu")) return;
+          if (!this.root || this._menuForElement(e.target)) return;
           this._closeAllMenus();
         };
         document.addEventListener("click", this._boundMenuDocClick);
@@ -596,7 +599,7 @@
 
     _handleKeyDown(event) {
       const openList = this.root?.querySelector(".rm-menu-list.rm-menu-open");
-      const openMenu = openList?.closest(".rm-menu");
+      const openMenu = this._menuForElement(openList);
       if (openMenu) {
         const options = Array.from(openList.querySelectorAll(".rm-menu-option"));
         const focusedIndex = options.indexOf(document.activeElement);
@@ -638,7 +641,7 @@
       const trigger = event.target.closest?.(".rm-menu-btn");
       if (trigger && this.root?.contains(trigger) &&
           ["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key)) {
-        const menu = trigger.closest(".rm-menu");
+        const menu = this._menuForElement(trigger);
         if (menu) this._openMenu(menu);
         event.preventDefault();
         event.stopPropagation();
@@ -733,25 +736,41 @@
       const current = options.find(([v]) => v === value) || options[0];
       const currentValue = current[0];
       const currentLabel = current[1];
+      const menuId = inputId ? `rm-menu-${inputId}` : `rm-menu-status-${statusId}`;
+      const listId = `${menuId}-list`;
       const inputAttrs = inputId
         ? `id="${inputId}"`
         : `data-status-id="${statusId}"`;
       const optionsHtml = options.map(([v, text]) => {
         const active = v === currentValue;
-        return `<button type="button" class="rm-menu-option${active ? " rm-menu-option-active" : ""}" role="option" data-value="${v}" aria-selected="${active ? "true" : "false"}">${text}</button>`;
+        return `<button type="button" class="rm-menu-option${active ? " rm-menu-option-active" : ""}" role="option" data-menu-owner="${menuId}" data-value="${v}" aria-selected="${active ? "true" : "false"}">${text}</button>`;
       }).join("");
-      return `<div class="rm-menu${compact ? " rm-menu-compact" : ""}">` +
+      return `<div class="rm-menu${compact ? " rm-menu-compact" : ""}" id="${menuId}">` +
         `<input type="hidden" ${inputAttrs} value="${currentValue}">` +
-        `<button type="button" class="rm-menu-btn" aria-haspopup="listbox" aria-expanded="false" title="${this._esc(label)}" aria-label="${this._esc(label)}">` +
+        `<button type="button" class="rm-menu-btn" aria-haspopup="listbox" aria-controls="${listId}" aria-expanded="false" title="${this._esc(label)}" aria-label="${this._esc(label)}">` +
           `<span class="rm-menu-label">${currentLabel}</span>` +
           `<svg class="rm-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>` +
         `</button>` +
-        `<div class="rm-menu-list" role="listbox" aria-label="${this._esc(label)}">${optionsHtml}</div>` +
+        `<div class="rm-menu-list${compact ? " rm-menu-list-compact" : ""}" id="${listId}" role="listbox" data-menu-owner="${menuId}" aria-label="${this._esc(label)}">${optionsHtml}</div>` +
       `</div>`;
     },
 
+    _menuForElement(element) {
+      if (!element) return null;
+      const nestedMenu = element.closest?.(".rm-menu");
+      if (nestedMenu) return nestedMenu;
+      const ownerId = element.closest?.("[data-menu-owner]")?.dataset.menuOwner;
+      return ownerId ? document.getElementById(ownerId) : null;
+    },
+
+    _menuList(menu) {
+      if (!menu) return null;
+      return menu.querySelector(".rm-menu-list") ||
+        document.getElementById(`${menu.id}-list`);
+    },
+
     _selectMenuOption(option) {
-      const menu = option?.closest(".rm-menu");
+      const menu = this._menuForElement(option);
       if (!menu || !this.root?.contains(menu)) return;
       const value = option.dataset.value;
       const statusInput = menu.querySelector("[data-status-id]");
@@ -779,10 +798,11 @@
       const resolvedMenu = menu || input.closest(".rm-menu");
       input.value = value;
       if (!resolvedMenu) return;
-      const option = resolvedMenu.querySelector(`.rm-menu-option[data-value="${value}"]`);
+      const list = this._menuList(resolvedMenu);
+      const option = list?.querySelector(`.rm-menu-option[data-value="${value}"]`);
       const label = resolvedMenu.querySelector(".rm-menu-label");
       if (label && option) label.textContent = option.textContent;
-      resolvedMenu.querySelectorAll(".rm-menu-option").forEach(opt => {
+      list?.querySelectorAll(".rm-menu-option").forEach(opt => {
         const active = opt.dataset.value === value;
         opt.classList.toggle("rm-menu-option-active", active);
         opt.setAttribute("aria-selected", active ? "true" : "false");
@@ -791,22 +811,37 @@
     },
 
     _toggleMenu(menu) {
-      const open = menu.querySelector(".rm-menu-list")?.classList.contains("rm-menu-open");
+      const open = this._menuList(menu)?.classList.contains("rm-menu-open");
       this._closeAllMenus();
       if (!open) this._openMenu(menu);
     },
 
     _openMenu(menu) {
-      const list = menu.querySelector(".rm-menu-list");
+      const list = this._menuList(menu);
       const btn = menu.querySelector(".rm-menu-btn");
       if (!list || !btn) return;
       this._closeAllMenus();
-      list.classList.add("rm-menu-open");
-      btn.setAttribute("aria-expanded", "true");
       const rect = btn.getBoundingClientRect();
       const gap = 4;
       const viewportPadding = 8;
       const compactWidth = menu.classList.contains("rm-menu-compact") ? 120 : 0;
+      const minimumWidth = Math.max(rect.width || 0, compactWidth);
+
+      list._rmMenuPortalOrigin = {
+        parent: list.parentNode,
+        nextSibling: list.nextSibling
+      };
+      this.root.appendChild(list);
+      list.style.pointerEvents = "auto";
+      list.style.position = "fixed";
+      list.style.top = "0px";
+      list.style.bottom = "";
+      list.style.left = "0px";
+      list.style.right = "auto";
+      list.style.minWidth = `${minimumWidth}px`;
+      list.classList.add("rm-menu-open");
+      btn.setAttribute("aria-expanded", "true");
+
       const menuWidth = Math.max(list.offsetWidth || 0, rect.width || 0, compactWidth);
       const menuHeight = list.offsetHeight || 0;
       const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
@@ -821,7 +856,7 @@
       list.style.bottom = openUp ? `${window.innerHeight - rect.top + gap}px` : "";
       list.style.left = `${left}px`;
       list.style.right = "auto";
-      list.style.minWidth = `${Math.max(rect.width || 0, compactWidth)}px`;
+      list.style.minWidth = `${minimumWidth}px`;
       const availableHeight = Math.max(0, (openUp ? spaceAbove : spaceBelow) - gap);
       list.style.maxHeight = availableHeight ? `${availableHeight}px` : "";
       list.style.overflowY = menuHeight > availableHeight && availableHeight > 0 ? "auto" : "";
@@ -832,12 +867,21 @@
     },
 
     _closeMenu(menu, restoreFocus = false) {
-      const list = menu.querySelector(".rm-menu-list");
+      const list = this._menuList(menu);
       const btn = menu.querySelector(".rm-menu-btn");
       if (list) {
         list.classList.remove("rm-menu-open");
-        ["position", "top", "bottom", "left", "right", "minWidth", "maxHeight", "overflowY"]
+        ["position", "top", "bottom", "left", "right", "minWidth", "maxHeight", "overflowY", "pointerEvents"]
           .forEach(property => { list.style[property] = ""; });
+        const origin = list._rmMenuPortalOrigin;
+        if (origin?.parent) {
+          if (origin.nextSibling?.parentNode === origin.parent) {
+            origin.parent.insertBefore(list, origin.nextSibling);
+          } else {
+            origin.parent.appendChild(list);
+          }
+        }
+        delete list._rmMenuPortalOrigin;
       }
       if (btn) btn.setAttribute("aria-expanded", "false");
       if (restoreFocus) btn?.focus();
@@ -1081,6 +1125,7 @@
     _rebuildList() {
       const list = document.getElementById("rm-panel-list");
       if (!list) return;
+      this._closeAllMenus();
       list.innerHTML = "";
       this._renderStorageError(list);
       this._renderFailedSync(list);
