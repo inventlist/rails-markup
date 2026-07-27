@@ -2,11 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [1.4.3] - 2026-07-27
+
+Fixes #4 — annotation popup/status dropdowns no longer break under host UI frameworks. Community contribution by @hughg12311, with review follow-ups.
 
 ### Fixed
 
-- Annotation popup intent/severity and panel status controls no longer use native `<select>` elements. Custom button menus under `#rm-toolbar-root` isolate them from host CSS *and* from host select-enhancers (Materialize `FormSelect`, Select2, etc.) that were duplicating the dropdowns (#4).
+- **Popup intent/severity and panel status controls are now custom button menus** under `#rm-toolbar-root` instead of native `<select>`s, so host CSS *and* host select-enhancers (Materialize `FormSelect`, Select2, etc.) can't restyle or duplicate them (the reported "double underlined dropdown" symptom). Hidden inputs keep the same ids, so the `.value` API and the revision/`baseRevision` sync path are unchanged.
+- **Full keyboard model** on the menus: open focuses the selected option; Arrow/Home/End navigate; Enter/Space select; Escape closes and restores focus to the trigger; Tab closes without trapping; `aria-expanded`/`aria-selected` stay in sync.
+- **Menus escape the panel's `overflow`/`backdrop-filter` containing block** by portaling the open list to `#rm-toolbar-root` and positioning it viewport-fixed (flip-up when needed), so status menus on lower cards are no longer clipped. Delegation is preserved via `data-menu-owner`.
+- **Escape closes an open menu regardless of annotation mode** — the keydown handler is bound once and torn down in `destroy()`.
+
+## [1.4.2] - 2026-07-26
 
 ## [1.4.2] - 2026-07-26
 
