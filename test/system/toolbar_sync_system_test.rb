@@ -38,6 +38,7 @@ class ToolbarSyncSystemTest < ApplicationSystemTestCase
     assert_selector "#rm-panel", visible: :visible
     assert_selector ".rm-card-body", text: "Increase the spacing"
     assert_selector "[data-status-id][value='resolved']"
+    assert_selector "[data-status-id][value='resolved'] + .rm-menu-btn .rm-menu-label", text: "Resolved"
     assert_text "Spacing updated on the server"
   end
 

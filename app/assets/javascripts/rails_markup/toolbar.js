@@ -120,6 +120,10 @@
         window.removeEventListener("online", this._boundOnline);
         this._boundOnline = null;
       }
+      if (this._boundKeyDown) {
+        document.removeEventListener("keydown", this._boundKeyDown, true);
+        this._boundKeyDown = null;
+      }
       if (this._onResize) window.removeEventListener("resize", this._onResize);
       if (this._onScroll) window.removeEventListener("scroll", this._onScroll);
       if (this._boundTurboFrame) {
@@ -129,6 +133,11 @@
       if (this._boundMenuDocClick) {
         document.removeEventListener("click", this._boundMenuDocClick);
         this._boundMenuDocClick = null;
+      }
+      if (this._boundMenuViewportChange) {
+        window.removeEventListener("resize", this._boundMenuViewportChange);
+        window.removeEventListener("scroll", this._boundMenuViewportChange);
+        this._boundMenuViewportChange = null;
       }
       this._onResize = null;
       this._onScroll = null;
@@ -174,7 +183,7 @@
         #rm-toolbar-root .rm-menu-list { display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:9984; min-width:100%; padding:4px; margin:0; list-style:none; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 10px 24px rgba(0,0,0,0.12); }
         #rm-toolbar-root .rm-menu-list.rm-menu-open { display:block; }
         #rm-toolbar-root .rm-menu-option { display:block; width:100%; margin:0; padding:6px 10px; font-size:11px; font-weight:500; line-height:1.4; color:#374151; text-align:left; border:none; border-radius:6px; background:transparent; background-image:none; box-shadow:none; cursor:pointer; appearance:none; -webkit-appearance:none; }
-        #rm-toolbar-root .rm-menu-option:hover { background:#f3f4f6; }
+        #rm-toolbar-root .rm-menu-option:hover, #rm-toolbar-root .rm-menu-option:focus { background:#f3f4f6; outline:none; }
         #rm-toolbar-root .rm-menu-option-active { background:#eef2ff; color:#4338ca; }
         #rm-toolbar-root .rm-menu-compact .rm-menu-btn { font-size:10px; padding:2px 6px; border-radius:4px; color:#6b7280; }
         #rm-toolbar-root .rm-menu-compact .rm-menu-list { min-width:120px; right:0; left:auto; }
@@ -337,15 +346,7 @@
         if (option) {
           e.preventDefault();
           e.stopPropagation();
-          const menu = option.closest(".rm-menu");
-          if (!menu || !this.root.contains(menu)) return;
-          const value = option.dataset.value;
-          this._setMenuValue(menu, value);
-          const statusInput = menu.querySelector("[data-status-id]");
-          if (statusInput) {
-            const id = parseInt(statusInput.dataset.statusId, 10);
-            if (!Number.isNaN(id)) this._changeStatus(id, value);
-          }
+          this._selectMenuOption(option);
           return;
         }
         const btn = e.target.closest(".rm-menu-btn");
@@ -369,6 +370,12 @@
 
       // Event delegation for cards (status change, edit, delete, or click scrolls to element)
       const panelList = document.getElementById("rm-panel-list");
+      if (!this._boundMenuViewportChange) {
+        this._boundMenuViewportChange = () => self._closeAllMenus();
+        window.addEventListener("resize", this._boundMenuViewportChange);
+        window.addEventListener("scroll", this._boundMenuViewportChange, { passive: true });
+      }
+      panelList.addEventListener("scroll", this._boundMenuViewportChange, { passive: true });
       panelList.addEventListener("click", (e) => {
         const retryBtn = e.target.closest("[data-retry-client-id]");
         if (retryBtn) {
@@ -418,7 +425,10 @@
       this._boundMouseDown = (e) => self._handleMouseDown(e);
       this._boundMouseUp = (e) => self._handleMouseUp(e);
       this._boundClick = (e) => self._handleClick(e);
-      this._boundKeyDown = (e) => self._handleKeyDown(e);
+      if (!this._boundKeyDown) {
+        this._boundKeyDown = (e) => self._handleKeyDown(e);
+        document.addEventListener("keydown", this._boundKeyDown, true);
+      }
       this._boundTouchStart = (e) => { if (self.active && e.touches[0]) { const t = e.touches[0]; const el = document.elementFromPoint(t.clientX, t.clientY); if (el && !self._isToolbar(el) && e.cancelable) e.preventDefault(); self._handleMouseDown({ clientX: t.clientX, clientY: t.clientY }); } };
       this._boundTouchEnd = (e) => { if (self.active && e.changedTouches[0]) { const t = e.changedTouches[0]; const el = document.elementFromPoint(t.clientX, t.clientY); if (el && !self._isToolbar(el)) { e.preventDefault(); self._handleMouseUp({ clientX: t.clientX, clientY: t.clientY, preventDefault(){}, stopPropagation(){} }); } } };
 
@@ -494,7 +504,6 @@
       document.addEventListener("mousedown", this._boundMouseDown, true);
       document.addEventListener("mouseup", this._boundMouseUp, true);
       document.addEventListener("click", this._boundClick, true);
-      document.addEventListener("keydown", this._boundKeyDown, true);
       document.addEventListener("touchstart", this._boundTouchStart, true);
       document.addEventListener("touchend", this._boundTouchEnd, true);
     },
@@ -514,7 +523,6 @@
       document.removeEventListener("mousedown", this._boundMouseDown, true);
       document.removeEventListener("mouseup", this._boundMouseUp, true);
       document.removeEventListener("click", this._boundClick, true);
-      document.removeEventListener("keydown", this._boundKeyDown, true);
       document.removeEventListener("touchstart", this._boundTouchStart, true);
       document.removeEventListener("touchend", this._boundTouchEnd, true);
       this._removeHighlight();
@@ -587,17 +595,69 @@
     },
 
     _handleKeyDown(event) {
-      if (event.key === "Escape") {
-        if (this.root?.querySelector(".rm-menu-list.rm-menu-open")) {
-          this._closeAllMenus();
+      const openList = this.root?.querySelector(".rm-menu-list.rm-menu-open");
+      const openMenu = openList?.closest(".rm-menu");
+      if (openMenu) {
+        const options = Array.from(openList.querySelectorAll(".rm-menu-option"));
+        const focusedIndex = options.indexOf(document.activeElement);
+
+        if (event.key === "Escape") {
+          this._closeMenu(openMenu, true);
           event.preventDefault();
+          event.stopPropagation();
           return;
         }
+        if (event.key === "Tab") {
+          this._closeMenu(openMenu);
+          return;
+        }
+        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          const direction = event.key === "ArrowDown" ? 1 : -1;
+          const start = focusedIndex === -1 ? 0 : focusedIndex;
+          const next = (start + direction + options.length) % options.length;
+          options[next]?.focus();
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        if (event.key === "Home" || event.key === "End") {
+          const option = event.key === "Home" ? options[0] : options[options.length - 1];
+          option?.focus();
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        if ((event.key === "Enter" || event.key === " ") && focusedIndex !== -1) {
+          this._selectMenuOption(options[focusedIndex]);
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+      }
+
+      const trigger = event.target.closest?.(".rm-menu-btn");
+      if (trigger && this.root?.contains(trigger) &&
+          ["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key)) {
+        const menu = trigger.closest(".rm-menu");
+        if (menu) this._openMenu(menu);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
+      if (event.key === "Escape") {
         const popup = document.getElementById("rm-popup");
         if (popup && popup.style.display === "block") {
           this._closePopup();
-        } else {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        if (this.active) {
           this._deactivateMode();
+          event.preventDefault();
+          event.stopPropagation();
+          return;
         }
       }
       if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -690,7 +750,24 @@
       `</div>`;
     },
 
-    _setMenuValue(inputOrMenu, value) {
+    _selectMenuOption(option) {
+      const menu = option?.closest(".rm-menu");
+      if (!menu || !this.root?.contains(menu)) return;
+      const value = option.dataset.value;
+      const statusInput = menu.querySelector("[data-status-id]");
+      const statusId = statusInput?.dataset.statusId;
+      this._setMenuValue(menu, value);
+      if (!statusId) return;
+      const id = parseInt(statusId, 10);
+      if (Number.isNaN(id)) return;
+      this._changeStatus(id, value);
+      this.root.querySelector(`[data-status-id="${statusId}"]`)
+        ?.closest(".rm-menu")
+        ?.querySelector(".rm-menu-btn")
+        ?.focus();
+    },
+
+    _setMenuValue(inputOrMenu, value, restoreFocus = true) {
       if (!inputOrMenu) return;
       const menu = inputOrMenu.classList?.contains("rm-menu")
         ? inputOrMenu
@@ -710,7 +787,7 @@
         opt.classList.toggle("rm-menu-option-active", active);
         opt.setAttribute("aria-selected", active ? "true" : "false");
       });
-      this._closeMenu(resolvedMenu);
+      this._closeMenu(resolvedMenu, restoreFocus);
     },
 
     _toggleMenu(menu) {
@@ -723,15 +800,47 @@
       const list = menu.querySelector(".rm-menu-list");
       const btn = menu.querySelector(".rm-menu-btn");
       if (!list || !btn) return;
+      this._closeAllMenus();
       list.classList.add("rm-menu-open");
       btn.setAttribute("aria-expanded", "true");
+      const rect = btn.getBoundingClientRect();
+      const gap = 4;
+      const viewportPadding = 8;
+      const compactWidth = menu.classList.contains("rm-menu-compact") ? 120 : 0;
+      const menuWidth = Math.max(list.offsetWidth || 0, rect.width || 0, compactWidth);
+      const menuHeight = list.offsetHeight || 0;
+      const spaceBelow = window.innerHeight - rect.bottom - viewportPadding;
+      const spaceAbove = rect.top - viewportPadding;
+      const openUp = menuHeight > spaceBelow && spaceAbove > spaceBelow;
+      const preferredLeft = compactWidth ? rect.right - menuWidth : rect.left;
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding);
+      const left = Math.min(Math.max(viewportPadding, preferredLeft), maxLeft);
+
+      list.style.position = "fixed";
+      list.style.top = openUp ? "" : `${rect.bottom + gap}px`;
+      list.style.bottom = openUp ? `${window.innerHeight - rect.top + gap}px` : "";
+      list.style.left = `${left}px`;
+      list.style.right = "auto";
+      list.style.minWidth = `${Math.max(rect.width || 0, compactWidth)}px`;
+      const availableHeight = Math.max(0, (openUp ? spaceAbove : spaceBelow) - gap);
+      list.style.maxHeight = availableHeight ? `${availableHeight}px` : "";
+      list.style.overflowY = menuHeight > availableHeight && availableHeight > 0 ? "auto" : "";
+
+      const selected = list.querySelector('.rm-menu-option[aria-selected="true"]') ||
+        list.querySelector(".rm-menu-option");
+      selected?.focus();
     },
 
-    _closeMenu(menu) {
+    _closeMenu(menu, restoreFocus = false) {
       const list = menu.querySelector(".rm-menu-list");
       const btn = menu.querySelector(".rm-menu-btn");
-      if (list) list.classList.remove("rm-menu-open");
+      if (list) {
+        list.classList.remove("rm-menu-open");
+        ["position", "top", "bottom", "left", "right", "minWidth", "maxHeight", "overflowY"]
+          .forEach(property => { list.style[property] = ""; });
+      }
       if (btn) btn.setAttribute("aria-expanded", "false");
+      if (restoreFocus) btn?.focus();
     },
 
     _closeAllMenus() {
@@ -775,8 +884,8 @@
         : this._currentElement.nearbyText.slice(0, 60);
       const input = document.getElementById("rm-popup-input");
       input.value = "";
-      this._setMenuValue(document.getElementById("rm-intent-select"), "change");
-      this._setMenuValue(document.getElementById("rm-severity-select"), "suggestion");
+      this._setMenuValue(document.getElementById("rm-intent-select"), "change", false);
+      this._setMenuValue(document.getElementById("rm-severity-select"), "suggestion", false);
       document.getElementById("rm-char-count").textContent = "";
       document.getElementById("rm-submit-label").textContent = "Add";
       this._closeAllMenus();
@@ -1026,8 +1135,8 @@
         ? '"' + annotation.selectedText.slice(0, 60) + '"'
         : (annotation.element?.nearbyText || "").slice(0, 60);
       document.getElementById("rm-popup-input").value = annotation.comment;
-      this._setMenuValue(document.getElementById("rm-intent-select"), annotation.intent);
-      this._setMenuValue(document.getElementById("rm-severity-select"), annotation.severity);
+      this._setMenuValue(document.getElementById("rm-intent-select"), annotation.intent, false);
+      this._setMenuValue(document.getElementById("rm-severity-select"), annotation.severity, false);
       document.getElementById("rm-submit-label").textContent = "Save";
       this._updateCharCount();
       this._closeAllMenus();
