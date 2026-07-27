@@ -1,18 +1,38 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require_relative "../lib/rails_markup/toolbar_source"
 
 class ToolbarSourceTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
 
-  def test_toolbar_definition_is_a_singleton_across_turbo_renders
-    source = File.read(File.join(ROOT, "app/assets/javascripts/rails_markup/toolbar.js"))
+  def source
+    RailsMarkup::ToolbarSource.script
+  end
 
+  def test_toolbar_definition_is_a_singleton_across_turbo_renders
     assert_includes source, "if (global.RailsMarkupToolbar) return;"
+    assert_includes source, "const RailsMarkupToolbar = {"
+    assert_includes source, "global.RailsMarkupToolbar = RailsMarkupToolbar;"
+    assert source.end_with?("})(window);\n")
+
+    files = Dir.glob(File.join(RailsMarkup::ToolbarSource::DIR, "*.js")).sort
+    expected = files.map { |file| File.read(file) }.join("\n")
+
+    assert_equal %w[
+      00-core.js
+      10-styles.js
+      20-dom.js
+      30-menu.js
+      40-events.js
+      50-sync.js
+      60-render.js
+      90-init.js
+    ], files.map { |file| File.basename(file) }
+    assert_equal expected, source
   end
 
   def test_only_the_partial_owns_the_turbo_load_listener
-    source = File.read(File.join(ROOT, "app/assets/javascripts/rails_markup/toolbar.js"))
     partial = File.read(File.join(ROOT, "app/views/rails_markup/shared/_toolbar.html.erb"))
 
     assert_equal 0, source.scan('document.addEventListener("turbo:load"').size
@@ -20,8 +40,6 @@ class ToolbarSourceTest < Minitest::Test
   end
 
   def test_turbo_reinitialization_deactivates_old_page_handlers_before_rebinding
-    source = File.read(File.join(ROOT, "app/assets/javascripts/rails_markup/toolbar.js"))
-
     assert_includes source, "if (previousPathname && previousPathname !== window.location.pathname) this._deactivateMode();"
   end
 
@@ -32,8 +50,6 @@ class ToolbarSourceTest < Minitest::Test
   end
 
   def test_popup_controls_avoid_native_selects
-    source = File.read(File.join(ROOT, "app/assets/javascripts/rails_markup/toolbar.js"))
-
     # Host select-enhancers (Materialize FormSelect, Select2, etc.) rewrite every
     # <select> on the page. Intent/severity/status must be custom button menus
     # under #rm-toolbar-root so host JS and CSS cannot touch them (#4).
@@ -45,8 +61,6 @@ class ToolbarSourceTest < Minitest::Test
   end
 
   def test_press_events_are_suppressed_in_annotation_mode
-    source = File.read(File.join(ROOT, "app/assets/javascripts/rails_markup/toolbar.js"))
-
     # _handleMouseDown must suppress the press so host controls don't act before
     # mouseup/click is blocked (guarding the synthetic touch object).
     handler = source[/_handleMouseDown\(event\).*?\n    \},/m]

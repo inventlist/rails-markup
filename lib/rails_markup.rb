@@ -2,6 +2,7 @@
 
 require_relative "rails_markup/version"
 require_relative "rails_markup/configuration"
+require_relative "rails_markup/toolbar_source"
 require_relative "rails_markup/store"
 require_relative "rails_markup/http_store_proxy"
 require_relative "rails_markup/http_server"

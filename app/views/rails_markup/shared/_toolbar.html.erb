@@ -7,7 +7,7 @@
     annotations) after a logout Turbo visit whose new body omits the partial. %>
 <span id="rm-toolbar-gate" hidden aria-hidden="true"></span>
 <script>
-<%== File.read(File.expand_path("../../../assets/javascripts/rails_markup/toolbar.js", __dir__)) %>
+<%== RailsMarkup::ToolbarSource.script %>
 </script>
 <script>
   (function() {

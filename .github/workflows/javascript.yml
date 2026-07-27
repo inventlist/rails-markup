@@ -15,4 +15,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: node --check app/assets/javascripts/rails_markup/toolbar.js
+      - run: ruby -e 'print Dir["app/assets/javascripts/rails_markup/toolbar/*.js"].sort.map { |file| File.read(file) }.join("\n")' | node --check --input-type=commonjs
