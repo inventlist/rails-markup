@@ -14,4 +14,7 @@
 - `node --test test/javascript/*_test.mjs` — toolbar JS unit tests.
 
 ## Cross-agent coordination
-- Shared thread: `../.agents/rails-markup/NOTES.md`.
+- Machine-level shared scratchpad: `~/.agents/threads/rails-markup/NOTES.md`
+  (informal Claude/Codex hand-offs). See `~/.agents/threads/README.md`.
+- For formal, per-repo agent threads use `docs/threads/*.thread.md`
+  (dev-docs `THREADS.md` convention) once this repo adopts it.
