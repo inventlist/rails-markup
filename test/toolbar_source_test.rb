@@ -31,18 +31,17 @@ class ToolbarSourceTest < Minitest::Test
     assert_includes partial, "RailsMarkup.config.toolbar_enabled"
   end
 
-  def test_popup_selects_are_isolated_from_host_form_styles
+  def test_popup_controls_avoid_native_selects
     source = File.read(File.join(ROOT, "app/assets/javascripts/rails_markup/toolbar.js"))
 
-    # Higher-specificity, hard-reset rule so host <select> styles (underlines,
-    # box-shadows, background images) cannot bleed into the popup dropdowns.
-    assert_includes source, "#rm-toolbar-root .rm-popup select"
-    assert_includes source, "-webkit-appearance:none"
-    assert_includes source, "background-image:none"
-    assert_includes source, "box-shadow:none"
-    # Force display so host rules like Materialize's
-    # `select:not(.browser-default){display:none}` can't hide the dropdowns.
-    assert_includes source, "#rm-toolbar-root .rm-popup select { display:inline-block;"
+    # Host select-enhancers (Materialize FormSelect, Select2, etc.) rewrite every
+    # <select> on the page. Intent/severity/status must be custom button menus
+    # under #rm-toolbar-root so host JS and CSS cannot touch them (#4).
+    refute_match(/<select[\s>]/, source)
+    assert_includes source, 'class="rm-menu'
+    assert_includes source, "_menuMarkup"
+    assert_includes source, "#rm-toolbar-root .rm-menu-btn"
+    assert_includes source, 'input type="hidden"'
   end
 
   def test_press_events_are_suppressed_in_annotation_mode

@@ -126,6 +126,10 @@
         document.removeEventListener("turbo:frame-render", this._boundTurboFrame);
         this._boundTurboFrame = null;
       }
+      if (this._boundMenuDocClick) {
+        document.removeEventListener("click", this._boundMenuDocClick);
+        this._boundMenuDocClick = null;
+      }
       this._onResize = null;
       this._onScroll = null;
       const root = document.getElementById("rm-toolbar-root");
@@ -159,19 +163,30 @@
         .rm-pins-container { position:absolute; top:0; left:0; width:100%; z-index:9979; pointer-events:none; }
         .rm-pin { pointer-events:auto; }
         .rm-popup { display:none; position:fixed; z-index:9982; width:360px; max-width:calc(100vw - 24px); background:rgba(255,255,255,0.95); backdrop-filter:blur(12px); border-radius:16px; box-shadow:0 25px 50px rgba(0,0,0,0.1); border:1px solid rgba(229,231,235,0.8); padding:16px; }
-        .rm-popup textarea { width:100%; font-size:13px; border:1px solid #e5e7eb; border-radius:12px; padding:12px; resize:none; outline:none; font-family:inherit; transition:border-color 0.15s,box-shadow 0.15s; }
-        .rm-popup textarea:focus { border-color:#818cf8; box-shadow:0 0 0 3px rgba(99,102,241,0.1); }
-        #rm-toolbar-root .rm-popup select { display:inline-block; width:auto; visibility:visible; opacity:1; font-size:11px; font-weight:500; line-height:1.4; color:#374151; height:auto; margin:0; border:1px solid #e5e7eb; border-top:1px solid #e5e7eb; border-right:1px solid #e5e7eb; border-bottom:1px solid #e5e7eb; border-left:1px solid #e5e7eb; border-radius:8px; padding:6px 24px 6px 8px; background:#fff; background-image:none; box-shadow:none; outline:none; text-transform:none; appearance:none; -webkit-appearance:none; -moz-appearance:none; cursor:pointer; }
-        #rm-toolbar-root .rm-popup select:focus { outline:none; border:1px solid #818cf8; box-shadow:0 0 0 3px rgba(99,102,241,0.1); }
-        #rm-toolbar-root .rm-popup select:hover { border:1px solid #d1d5db; background:#fff; }
+        #rm-toolbar-root .rm-popup textarea { display:block; width:100%; max-width:100%; font-size:13px; font-weight:400; line-height:1.4; color:#1f2937; height:auto; margin:0; border:1px solid #e5e7eb; border-radius:12px; padding:12px; resize:none; outline:none; font-family:inherit; background:#fff; background-image:none; box-shadow:none; appearance:none; -webkit-appearance:none; transition:border-color 0.15s,box-shadow 0.15s; }
+        #rm-toolbar-root .rm-popup textarea:focus { border:1px solid #818cf8; box-shadow:0 0 0 3px rgba(99,102,241,0.1); }
+        #rm-toolbar-root .rm-menu { position:relative; display:inline-block; vertical-align:middle; }
+        #rm-toolbar-root .rm-menu-btn { display:inline-flex; align-items:center; gap:4px; width:auto; height:auto; margin:0; font-size:11px; font-weight:500; line-height:1.4; color:#374151; border:1px solid #e5e7eb; border-radius:8px; padding:6px 8px; background:#fff; background-image:none; box-shadow:none; outline:none; text-transform:none; appearance:none; -webkit-appearance:none; cursor:pointer; }
+        #rm-toolbar-root .rm-menu-btn:hover { border-color:#d1d5db; background:#fff; }
+        #rm-toolbar-root .rm-menu-btn:focus { outline:none; border-color:#818cf8; box-shadow:0 0 0 3px rgba(99,102,241,0.1); }
+        #rm-toolbar-root .rm-menu-btn[aria-expanded="true"] { border-color:#818cf8; }
+        #rm-toolbar-root .rm-menu-chevron { width:10px; height:10px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; opacity:0.55; }
+        #rm-toolbar-root .rm-menu-list { display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:9984; min-width:100%; padding:4px; margin:0; list-style:none; background:#fff; border:1px solid #e5e7eb; border-radius:10px; box-shadow:0 10px 24px rgba(0,0,0,0.12); }
+        #rm-toolbar-root .rm-menu-list.rm-menu-open { display:block; }
+        #rm-toolbar-root .rm-menu-option { display:block; width:100%; margin:0; padding:6px 10px; font-size:11px; font-weight:500; line-height:1.4; color:#374151; text-align:left; border:none; border-radius:6px; background:transparent; background-image:none; box-shadow:none; cursor:pointer; appearance:none; -webkit-appearance:none; }
+        #rm-toolbar-root .rm-menu-option:hover { background:#f3f4f6; }
+        #rm-toolbar-root .rm-menu-option-active { background:#eef2ff; color:#4338ca; }
+        #rm-toolbar-root .rm-menu-compact .rm-menu-btn { font-size:10px; padding:2px 6px; border-radius:4px; color:#6b7280; }
+        #rm-toolbar-root .rm-menu-compact .rm-menu-list { min-width:120px; right:0; left:auto; }
+        #rm-toolbar-root .rm-menu-compact .rm-menu-option { font-size:10px; padding:5px 8px; }
         .rm-popup-el { font-size:11px; color:#9ca3af; font-family:monospace; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.4; }
         .rm-popup-text { font-size:12px; color:#6b7280; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-top:2px; line-height:1.4; }
         .rm-popup-actions { display:flex; align-items:center; gap:8px; margin-top:8px; }
         .rm-popup-actions .rm-count { font-size:10px; color:#d1d5db; margin-left:auto; font-variant-numeric:tabular-nums; }
-        .rm-btn-cancel { padding:6px 12px; font-size:12px; color:#9ca3af; background:none; border:none; cursor:pointer; border-radius:8px; }
-        .rm-btn-cancel:hover { color:#6b7280; }
-        .rm-btn-submit { padding:6px 16px; font-size:12px; font-weight:500; color:#fff; border:none; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-        .rm-btn-submit kbd { font-size:9px; opacity:0.6; font-family:sans-serif; }
+        #rm-toolbar-root .rm-btn-cancel { padding:6px 12px; font-size:12px; color:#9ca3af; background:none; background-image:none; border:none; box-shadow:none; cursor:pointer; border-radius:8px; appearance:none; -webkit-appearance:none; }
+        #rm-toolbar-root .rm-btn-cancel:hover { color:#6b7280; }
+        #rm-toolbar-root .rm-btn-submit { padding:6px 16px; font-size:12px; font-weight:500; color:#fff; border:none; border-radius:8px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; box-shadow:none; appearance:none; -webkit-appearance:none; }
+        #rm-toolbar-root .rm-btn-submit kbd { font-size:9px; opacity:0.6; font-family:sans-serif; }
         .rm-panel { display:none; position:fixed; z-index:9981; width:380px; max-width:calc(100vw - 48px); max-height:60vh; background:rgba(255,255,255,0.95); backdrop-filter:blur(12px); border-radius:16px; box-shadow:0 25px 50px rgba(0,0,0,0.1); border:1px solid rgba(229,231,235,0.8); flex-direction:column; }
         .rm-panel-header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #f3f4f6; }
         .rm-panel-header h3 { font-size:14px; font-weight:600; color:#1f2937; }
@@ -252,17 +267,8 @@
           </div>
           <textarea id="rm-popup-input" rows="3" placeholder="What should change?"></textarea>
           <div style="display:flex;align-items:center;gap:8px;margin-top:12px">
-            <select id="rm-intent-select">
-              <option value="fix">Fix</option>
-              <option value="change" selected>Change</option>
-              <option value="question">Question</option>
-              <option value="approve">Approve</option>
-            </select>
-            <select id="rm-severity-select">
-              <option value="suggestion" selected>Suggestion</option>
-              <option value="important">Important</option>
-              <option value="blocking">Blocking</option>
-            </select>
+            ${this._menuMarkup({ inputId: "rm-intent-select", label: "Intent", value: "change", options: this._intentOptions() })}
+            ${this._menuMarkup({ inputId: "rm-severity-select", label: "Severity", value: "suggestion", options: this._severityOptions() })}
             <span class="rm-count" id="rm-char-count"></span>
           </div>
           <div class="rm-popup-actions">
@@ -324,15 +330,45 @@
         if (chip) self._filterAnnotations(chip.dataset.filter);
       });
 
+      // Custom menus (intent/severity/status) — button+menu, never native selects
+      // so host FormSelect/Select2 enhancers cannot rewrite our DOM (#4).
+      this.root.addEventListener("click", (e) => {
+        const option = e.target.closest(".rm-menu-option");
+        if (option) {
+          e.preventDefault();
+          e.stopPropagation();
+          const menu = option.closest(".rm-menu");
+          if (!menu || !this.root.contains(menu)) return;
+          const value = option.dataset.value;
+          this._setMenuValue(menu, value);
+          const statusInput = menu.querySelector("[data-status-id]");
+          if (statusInput) {
+            const id = parseInt(statusInput.dataset.statusId, 10);
+            if (!Number.isNaN(id)) this._changeStatus(id, value);
+          }
+          return;
+        }
+        const btn = e.target.closest(".rm-menu-btn");
+        if (btn) {
+          e.preventDefault();
+          e.stopPropagation();
+          const menu = btn.closest(".rm-menu");
+          if (!menu || !this.root.contains(menu)) return;
+          this._toggleMenu(menu);
+          return;
+        }
+        if (!e.target.closest(".rm-menu")) this._closeAllMenus();
+      });
+      if (!this._boundMenuDocClick) {
+        this._boundMenuDocClick = (e) => {
+          if (!this.root || e.target.closest("#rm-toolbar-root .rm-menu")) return;
+          this._closeAllMenus();
+        };
+        document.addEventListener("click", this._boundMenuDocClick);
+      }
+
       // Event delegation for cards (status change, edit, delete, or click scrolls to element)
       const panelList = document.getElementById("rm-panel-list");
-      panelList.addEventListener("change", (e) => {
-        const select = e.target.closest("[data-status-id]");
-        if (!select) return;
-        e.stopPropagation();
-        const id = parseInt(select.dataset.statusId, 10);
-        self._changeStatus(id, select.value);
-      });
       panelList.addEventListener("click", (e) => {
         const retryBtn = e.target.closest("[data-retry-client-id]");
         if (retryBtn) {
@@ -340,8 +376,8 @@
           self._retrySync(retryBtn.dataset.retryClientId);
           return;
         }
-        // Status dropdown click — don't scroll
-        if (e.target.closest("[data-status-id]")) { e.stopPropagation(); return; }
+        // Status menu — leave bubbling for the root menu handler; don't scroll.
+        if (e.target.closest(".rm-menu")) return;
         // Edit button
         const editBtn = e.target.closest("[data-edit-id]");
         if (editBtn) {
@@ -552,6 +588,11 @@
 
     _handleKeyDown(event) {
       if (event.key === "Escape") {
+        if (this.root?.querySelector(".rm-menu-list.rm-menu-open")) {
+          this._closeAllMenus();
+          event.preventDefault();
+          return;
+        }
         const popup = document.getElementById("rm-popup");
         if (popup && popup.style.display === "block") {
           this._closePopup();
@@ -602,6 +643,102 @@
 
     // ---- Popup ----
 
+    _intentOptions() {
+      return [
+        ["fix", "Fix"],
+        ["change", "Change"],
+        ["question", "Question"],
+        ["approve", "Approve"]
+      ];
+    },
+
+    _severityOptions() {
+      return [
+        ["suggestion", "Suggestion"],
+        ["important", "Important"],
+        ["blocking", "Blocking"]
+      ];
+    },
+
+    _statusOptions() {
+      return [
+        ["pending", "Pending"],
+        ["acknowledged", "Acknowledged"],
+        ["resolved", "Resolved"],
+        ["dismissed", "Dismissed"]
+      ];
+    },
+
+    _menuMarkup({ inputId, statusId, label, value, options, compact }) {
+      const current = options.find(([v]) => v === value) || options[0];
+      const currentValue = current[0];
+      const currentLabel = current[1];
+      const inputAttrs = inputId
+        ? `id="${inputId}"`
+        : `data-status-id="${statusId}"`;
+      const optionsHtml = options.map(([v, text]) => {
+        const active = v === currentValue;
+        return `<button type="button" class="rm-menu-option${active ? " rm-menu-option-active" : ""}" role="option" data-value="${v}" aria-selected="${active ? "true" : "false"}">${text}</button>`;
+      }).join("");
+      return `<div class="rm-menu${compact ? " rm-menu-compact" : ""}">` +
+        `<input type="hidden" ${inputAttrs} value="${currentValue}">` +
+        `<button type="button" class="rm-menu-btn" aria-haspopup="listbox" aria-expanded="false" title="${this._esc(label)}" aria-label="${this._esc(label)}">` +
+          `<span class="rm-menu-label">${currentLabel}</span>` +
+          `<svg class="rm-menu-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>` +
+        `</button>` +
+        `<div class="rm-menu-list" role="listbox" aria-label="${this._esc(label)}">${optionsHtml}</div>` +
+      `</div>`;
+    },
+
+    _setMenuValue(inputOrMenu, value) {
+      if (!inputOrMenu) return;
+      const menu = inputOrMenu.classList?.contains("rm-menu")
+        ? inputOrMenu
+        : inputOrMenu.closest?.(".rm-menu");
+      const input = menu
+        ? menu.querySelector('input[type="hidden"]')
+        : inputOrMenu;
+      if (!input) return;
+      const resolvedMenu = menu || input.closest(".rm-menu");
+      input.value = value;
+      if (!resolvedMenu) return;
+      const option = resolvedMenu.querySelector(`.rm-menu-option[data-value="${value}"]`);
+      const label = resolvedMenu.querySelector(".rm-menu-label");
+      if (label && option) label.textContent = option.textContent;
+      resolvedMenu.querySelectorAll(".rm-menu-option").forEach(opt => {
+        const active = opt.dataset.value === value;
+        opt.classList.toggle("rm-menu-option-active", active);
+        opt.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      this._closeMenu(resolvedMenu);
+    },
+
+    _toggleMenu(menu) {
+      const open = menu.querySelector(".rm-menu-list")?.classList.contains("rm-menu-open");
+      this._closeAllMenus();
+      if (!open) this._openMenu(menu);
+    },
+
+    _openMenu(menu) {
+      const list = menu.querySelector(".rm-menu-list");
+      const btn = menu.querySelector(".rm-menu-btn");
+      if (!list || !btn) return;
+      list.classList.add("rm-menu-open");
+      btn.setAttribute("aria-expanded", "true");
+    },
+
+    _closeMenu(menu) {
+      const list = menu.querySelector(".rm-menu-list");
+      const btn = menu.querySelector(".rm-menu-btn");
+      if (list) list.classList.remove("rm-menu-open");
+      if (btn) btn.setAttribute("aria-expanded", "false");
+    },
+
+    _closeAllMenus() {
+      if (!this.root) return;
+      this.root.querySelectorAll(".rm-menu").forEach(menu => this._closeMenu(menu));
+    },
+
     _showPopup(x, y) {
       const popup = document.getElementById("rm-popup");
       // Clean up previous drawing elements
@@ -638,10 +775,11 @@
         : this._currentElement.nearbyText.slice(0, 60);
       const input = document.getElementById("rm-popup-input");
       input.value = "";
-      document.getElementById("rm-intent-select").value = "change";
-      document.getElementById("rm-severity-select").value = "suggestion";
+      this._setMenuValue(document.getElementById("rm-intent-select"), "change");
+      this._setMenuValue(document.getElementById("rm-severity-select"), "suggestion");
       document.getElementById("rm-char-count").textContent = "";
       document.getElementById("rm-submit-label").textContent = "Add";
+      this._closeAllMenus();
 
       // Show screenshot preview with drawing tools
       if (this._currentScreenshot) {
@@ -652,6 +790,7 @@
     },
 
     _closePopup() {
+      this._closeAllMenus();
       const popup = document.getElementById("rm-popup");
       popup.style.transition = "opacity 0.15s ease";
       popup.style.opacity = "0";
@@ -806,12 +945,13 @@
           <span class="rm-card-badge" style="background:${ic.bg};color:${ic.text}">${annotation.intent}</span>
           ${annotation.severity !== "suggestion" ? '<span class="rm-card-badge" style="background:#fff7ed;color:#9a3412">' + annotation.severity + '</span>' : ''}
           <span style="margin-left:auto;display:flex;gap:2px;align-items:center;">
-            <select data-status-id="${annotation.id}" title="Change status" style="font-size:10px;padding:2px 4px;border:1px solid #e5e7eb;border-radius:4px;background:#fff;color:#6b7280;cursor:pointer;appearance:auto;">
-              <option value="pending"${annotation.status === "pending" ? " selected" : ""}>Pending</option>
-              <option value="acknowledged"${annotation.status === "acknowledged" ? " selected" : ""}>Acknowledged</option>
-              <option value="resolved"${annotation.status === "resolved" ? " selected" : ""}>Resolved</option>
-              <option value="dismissed"${annotation.status === "dismissed" ? " selected" : ""}>Dismissed</option>
-            </select>
+            ${this._menuMarkup({
+              statusId: annotation.id,
+              label: "Change status",
+              value: annotation.status,
+              options: this._statusOptions(),
+              compact: true
+            })}
             <button data-edit-id="${annotation.id}" title="Edit" style="padding:2px 4px;background:none;border:none;cursor:pointer;color:#d1d5db;border-radius:4px;display:flex;align-items:center;" onmouseover="this.style.color='#6b7280'" onmouseout="this.style.color='#d1d5db'">
               <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;"><path d="M17 3a2.85 2.85 0 114 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
             </button>
@@ -886,10 +1026,11 @@
         ? '"' + annotation.selectedText.slice(0, 60) + '"'
         : (annotation.element?.nearbyText || "").slice(0, 60);
       document.getElementById("rm-popup-input").value = annotation.comment;
-      document.getElementById("rm-intent-select").value = annotation.intent;
-      document.getElementById("rm-severity-select").value = annotation.severity;
+      this._setMenuValue(document.getElementById("rm-intent-select"), annotation.intent);
+      this._setMenuValue(document.getElementById("rm-severity-select"), annotation.severity);
       document.getElementById("rm-submit-label").textContent = "Save";
       this._updateCharCount();
+      this._closeAllMenus();
 
       // Clean up previous drawing elements
       const popup = document.getElementById("rm-popup");

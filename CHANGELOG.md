@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Annotation popup intent/severity and panel status controls no longer use native `<select>` elements. Custom button menus under `#rm-toolbar-root` isolate them from host CSS *and* from host select-enhancers (Materialize `FormSelect`, Select2, etc.) that were duplicating the dropdowns (#4).
+
 ## [1.4.2] - 2026-07-26
 
 Fifth-round audit follow-ups — closes two client-side sync-reconciliation races. Toolbar-only; no server or schema change.
