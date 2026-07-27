@@ -2,13 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.5] - 2026-07-27
+
+### Fixed
+
+- **Keyboard focus is preserved when a custom menu closes involuntarily.** When a portaled intent/severity/status menu closed due to panel/window scroll, resize, or Tab while an option had focus, focus fell to `<body>`; it now returns to the menu's trigger button, so keyboard/`Tab` navigation stays deterministic (found in a post-release review of #4's menus).
+
 ## [1.4.4] - 2026-07-27
 
 Internal refactor only — no behavior change.
 
 ### Changed
 
-- The browser toolbar source is split from a single ~2,600-line `toolbar.js` into focused modules under `app/assets/javascripts/rails_markup/toolbar/` (`00-core`, `10-styles`, `20-dom`, `30-menu`, `40-events`, `50-sync`, `60-render`, `90-init`). They are concatenated in order into the same single inline `<script>` by `RailsMarkup::ToolbarSource` (and identically by the JS test harness) — still no bundler, no build step, self-contained in any Rails app. The shipped/executed script is unchanged.
+- The browser toolbar source is split from a single ~2,600-line `toolbar.js` into focused modules under `app/assets/javascripts/rails_markup/toolbar/` (`00-core`, `10-styles`, `20-dom`, `30-menu`, `40-events`, `50-sync`, `60-render`, `90-init`). They are concatenated in order into the same single inline `<script>` by `RailsMarkup::ToolbarSource` (and identically by the JS test harness) — still no bundler, no build step, self-contained in any Rails app. Runtime behavior is unchanged: every method body is identical and byte-for-byte preserved; only the ordering (methods regrouped behind `Object.assign`) differs, so the concatenated bytes are not literally identical to the previous single file.
 
 ## [1.4.3] - 2026-07-27
 

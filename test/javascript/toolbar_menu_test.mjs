@@ -230,3 +230,30 @@ test("open menus use fixed viewport positioning and close on panel scroll", (t) 
   assert.ok(list.parentElement === menu);
   assert.equal(list.style.position, "");
 });
+
+test("involuntary close (scroll) restores focus to the trigger instead of dropping to body", (t) => {
+  const annotation = serverBackedAnnotation();
+  const harness = createToolbarHarness({
+    url: "https://example.test/products",
+    storage: { "rm-annotations:%2Ffeedback%2Fapi": { annotations: [annotation], nextId: 8, outbox: {} } }
+  });
+  t.after(() => harness.reset());
+  injectToolbar(harness);
+  harness.toolbar._loadFromStorage();
+
+  const menu = harness.window.document.querySelector('[data-status-id="7"]').closest(".rm-menu");
+  const trigger = menu.querySelector(".rm-menu-btn");
+  const list = menu.querySelector(".rm-menu-list");
+  trigger.getBoundingClientRect = () => ({ top: 100, right: 220, bottom: 124, left: 120, width: 100, height: 24 });
+
+  trigger.click();
+  // opening moves keyboard focus onto the selected option inside the portaled list
+  assert.ok(list.contains(harness.window.document.activeElement));
+  assert.notEqual(harness.window.document.activeElement, trigger);
+
+  harness.window.document.getElementById("rm-panel-list")
+    .dispatchEvent(new harness.window.Event("scroll"));
+
+  // focus must return to the trigger, not fall to <body>
+  assert.ok(harness.window.document.activeElement === trigger);
+});

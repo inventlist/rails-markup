@@ -152,6 +152,11 @@
     _closeMenu(menu, restoreFocus = false) {
       const list = this._menuList(menu);
       const btn = menu.querySelector(".rm-menu-btn");
+      // If keyboard focus is inside the list we're about to move/hide, it would
+      // otherwise fall to <body>. Return it to the trigger so involuntary closes
+      // (scroll/resize/rebuild) and Tab keep a deterministic focus target — Tab
+      // then progresses naturally from the trigger.
+      const listHadFocus = !!(list && list.contains(document.activeElement));
       if (list) {
         list.classList.remove("rm-menu-open");
         ["position", "top", "bottom", "left", "right", "minWidth", "maxHeight", "overflowY", "pointerEvents"]
@@ -167,7 +172,7 @@
         delete list._rmMenuPortalOrigin;
       }
       if (btn) btn.setAttribute("aria-expanded", "false");
-      if (restoreFocus) btn?.focus();
+      if (restoreFocus || listHadFocus) btn?.focus();
     },
     _closeAllMenus() {
       if (!this.root) return;
