@@ -14,7 +14,7 @@ class ToolbarSourceTest < Minitest::Test
     assert_includes source, "if (global.RailsMarkupToolbar) return;"
     assert_includes source, "const RailsMarkupToolbar = {"
     assert_includes source, "global.RailsMarkupToolbar = RailsMarkupToolbar;"
-    assert source.end_with?("})(window);\n")
+    assert source.end_with?("})(typeof window !== \"undefined\" ? window : this);\n")
 
     files = Dir.glob(File.join(RailsMarkup::ToolbarSource::DIR, "*.js")).sort
     expected = files.map { |file| File.read(file) }.join("\n")
