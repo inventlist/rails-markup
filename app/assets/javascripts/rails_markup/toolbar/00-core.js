@@ -27,6 +27,7 @@
     activeFilter: "all",
     editingId: null,
     _currentScreenshot: null,
+    toolbarSettings: {},
     _storageError: null,
     _outboxFlushScheduled: false,
     _outboxFlushTimer: null,
@@ -44,6 +45,8 @@
     _syncMalformedLimit: 3,
     _syncUnavailable: null,
     legacyStorageEndpoint: null,
+    _bootstrapOptions: null,
+    _settingsPanelOpen: false,
 
     // Drawing state
     drawingMode: null,      // null | "arrow" | "rect" | "highlight"

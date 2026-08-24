@@ -78,6 +78,12 @@ module RailsMarkup
       assert_select "turbo-frame#detail-panel"
     end
 
+    test "show close button returns to the dashboard outside the split layout" do
+      get rails_markup.annotation_path(annotations(:pending_fix))
+
+      assert_match(/window\.location\.href='#{Regexp.escape(rails_markup.root_path)}'/, response.body)
+    end
+
     # --- Board ---
 
     test "board renders all columns" do
@@ -91,6 +97,15 @@ module RailsMarkup
       assert_response :success
       # One move-select per rendered card (drag-and-drop alternative for touch).
       assert_select ".rm-board-card .rm-board-move"
+    end
+
+    test "board includes a csrf token for status mutations" do
+      RailsMarkup::DashboardController.allow_forgery_protection = true
+      get rails_markup.board_path
+
+      assert_select 'meta[name="csrf-token"][content]'
+    ensure
+      RailsMarkup::DashboardController.allow_forgery_protection = false
     end
 
     # --- Update actions ---

@@ -9,13 +9,17 @@
         @keyframes rm-toast-out { from{opacity:1;transform:translateY(0) scale(1)} to{opacity:0;transform:translateY(16px) scale(0.95)} }
         #rm-toolbar-root { position:fixed; inset:0; pointer-events:none; z-index:9979; }
         #rm-toolbar-root * { box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif; }
-        .rm-fab, .rm-panel-toggle, .rm-panel, .rm-popup { pointer-events:auto; }
+        .rm-fab, .rm-panel-toggle, .rm-toolbar-settings, .rm-panel, .rm-popup { pointer-events:auto; }
         .rm-fab { position:fixed; z-index:9980; border-radius:50%; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.2s; box-shadow:0 4px 12px rgba(0,0,0,0.15); }
         .rm-fab svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
         .rm-fab-badge { position:absolute; top:-4px; right:-4px; min-width:20px; height:20px; padding:0 4px; border-radius:10px; background:#ef4444; color:#fff; font-size:11px; font-weight:700; display:none; align-items:center; justify-content:center; }
         .rm-panel-toggle { position:fixed; z-index:9980; width:32px; height:32px; border-radius:50%; border:1px solid #e5e7eb; background:rgba(255,255,255,0.9); cursor:pointer; display:none; align-items:center; justify-content:center; color:#6b7280; transition:all 0.2s; backdrop-filter:blur(8px); }
         .rm-panel-toggle:hover { color:#4361ee; }
         .rm-panel-toggle svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+        .rm-panel-toggle-badge { position:absolute; top:-4px; right:-4px; min-width:18px; height:18px; padding:0 4px; border-radius:9px; background:#ef4444; color:#fff; font-size:10px; font-weight:700; display:none; align-items:center; justify-content:center; }
+        .rm-toolbar-settings { position:fixed; z-index:9980; width:32px; height:32px; border-radius:50%; border:1px solid #e5e7eb; background:#fff; cursor:pointer; display:none; align-items:center; justify-content:center; color:#6b7280; transition:all 0.2s; backdrop-filter:blur(8px); }
+        .rm-toolbar-settings:hover { color:#374151; background:#f9fafb; }
+        .rm-toolbar-settings svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
         .rm-toast-container { position:fixed; z-index:9983; display:flex; flex-direction:column; gap:8px; pointer-events:none; }
         .rm-pins-container { position:absolute; top:0; left:0; width:100%; z-index:9979; pointer-events:none; }
         .rm-pin { pointer-events:auto; }
@@ -47,7 +51,13 @@
         .rm-panel { display:none; position:fixed; z-index:9981; width:380px; max-width:calc(100vw - 48px); max-height:60vh; background:rgba(255,255,255,0.95); backdrop-filter:blur(12px); border-radius:16px; box-shadow:0 25px 50px rgba(0,0,0,0.1); border:1px solid rgba(229,231,235,0.8); flex-direction:column; }
         .rm-panel-header { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid #f3f4f6; }
         .rm-panel-header h3 { font-size:14px; font-weight:600; color:#1f2937; }
+        .rm-panel-header-actions { display:flex; align-items:center; gap:6px; }
         .rm-panel-count { min-width:20px; text-align:center; padding:2px 6px; font-size:10px; font-weight:600; border-radius:10px; }
+        .rm-settings { padding:12px 16px 4px; border-bottom:1px solid #f3f4f6; }
+        .rm-settings[hidden] { display:none; }
+        .rm-settings-group { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+        .rm-settings-label { font-size:11px; font-weight:600; color:#6b7280; text-transform:uppercase; letter-spacing:0.05em; }
+        .rm-settings-options { display:flex; flex-wrap:wrap; gap:6px; }
         .rm-panel-close { padding:6px; color:#d1d5db; background:none; border:none; cursor:pointer; border-radius:8px; }
         .rm-panel-close:hover { color:#6b7280; }
         .rm-panel-close svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }

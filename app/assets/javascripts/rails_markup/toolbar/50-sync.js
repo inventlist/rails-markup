@@ -3,8 +3,41 @@
       const endpoint = (this.endpoint || "/feedback/api").replace(/\/+$/, "") || "/";
       return `rm-annotations:${encodeURIComponent(endpoint)}`;
     },
+    _toolbarSettingsKey() {
+      const endpoint = (this.endpoint || "/feedback/api").replace(/\/+$/, "") || "/";
+      return `rm-toolbar-settings:${encodeURIComponent(endpoint)}`;
+    },
     _pageUrl() { return window.location.pathname + window.location.search; },
     _pageStorageKey() { return this._storageKey() + ":" + this._pageUrl(); },
+    _normalizeToolbarSettings(candidate = {}) {
+      const source = candidate && typeof candidate === "object" && !Array.isArray(candidate) ? candidate : {};
+      const normalized = {};
+      if (this._validToolbarAccent(source.accent)) normalized.accent = source.accent;
+      if (this._validToolbarPosition(source.position)) normalized.position = source.position;
+      if (this._validToolbarSize(source.size)) normalized.size = source.size;
+      if (typeof source.fabVisible === "boolean") normalized.fabVisible = source.fabVisible;
+      if (typeof source.enableScreenshots === "boolean") normalized.enableScreenshots = source.enableScreenshots;
+      return normalized;
+    },
+    _loadToolbarSettings() {
+      try {
+        const raw = localStorage.getItem(this._toolbarSettingsKey());
+        if (!raw) return {};
+        return this._normalizeToolbarSettings(JSON.parse(raw));
+      } catch (e) {
+        console.warn("[rails-markup] settings load failed:", e);
+        return {};
+      }
+    },
+    _saveToolbarSettings(settings = this.toolbarSettings || {}) {
+      try {
+        localStorage.setItem(this._toolbarSettingsKey(), JSON.stringify(this._normalizeToolbarSettings(settings)));
+        return true;
+      } catch (e) {
+        console.warn("[rails-markup] settings save failed:", e);
+        return false;
+      }
+    },
     _saveToStorage() {
       try {
         // Cross-tab storage-event merging is deferred: safely reconciling ordered
@@ -72,6 +105,7 @@
       this.outbox = snapshot.outbox;
       this.nextId = snapshot.nextId;
       this.legacyMigrations = snapshot.legacyMigrations;
+      this.toolbarSettings = snapshot.toolbarSettings || {};
       this._storageError = "Changes could not be saved in this browser. Free storage space and try again.";
       this._renderPins();
       this._rebuildList();
@@ -87,7 +121,8 @@
         annotations: this.annotations,
         outbox: this.outbox,
         nextId: this.nextId,
-        legacyMigrations: this.legacyMigrations
+        legacyMigrations: this.legacyMigrations,
+        toolbarSettings: this.toolbarSettings
       }));
     },
     _mergeDirtyFields(...collections) {

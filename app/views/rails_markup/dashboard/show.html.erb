@@ -5,7 +5,7 @@
 <turbo-frame id="detail-panel">
 <div class="rm-detail">
   <%# Close button %>
-  <button type="button" class="rm-back" onclick="var f=this.closest('turbo-frame'); f.innerHTML=''; f.classList.add('rm-panel-empty'); document.querySelectorAll('.rm-card-active').forEach(c => c.classList.remove('rm-card-active'));">&#10005; Close</button>
+  <button type="button" class="rm-back" onclick="var f=this.closest('turbo-frame'); if (this.closest('.rm-layout')) { f.innerHTML=''; f.classList.add('rm-panel-empty'); document.querySelectorAll('.rm-card-active').forEach(c => c.classList.remove('rm-card-active')); } else { window.location.href='<%= j(rails_markup.root_path) %>'; }">&#10005; Close</button>
 
   <%# Header badges %>
   <div class="rm-detail-header">

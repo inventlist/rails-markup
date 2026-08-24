@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.6] - 2026-08-24
+
+### Fixed
+
+- The browser toolbar now exposes a visible settings control in the UI, not just inside the annotations panel. Toolbar presentation settings are persisted per endpoint and override init-time defaults on startup.
+- The floating annotation button is smaller by default, and the toolbar badge now sits on the panel toggle instead of the FAB.
+- The dashboard close button now returns to the list outside the split-panel layout instead of blanking the page.
+
 ## [1.4.5] - 2026-07-27
 
 ### Fixed

@@ -73,7 +73,7 @@ module RailsMarkup
     # "tl" (top-left), "tr" (top-right). Default: "bl"
     attr_reader :toolbar_position
 
-    # FAB button size: "default" (48px), "compact" (40px), "slim" (32px).
+    # FAB button size: "default" (40px), "compact" (36px), "slim" (32px).
     # Default: "default"
     attr_reader :toolbar_size
 

@@ -3,12 +3,21 @@
       const previousPathname = this._currentPathname;
       const previousPageUrl = this._currentPageUrl;
       const currentPageUrl = this._pageUrl();
+      this._bootstrapOptions = Object.assign({}, opts);
       this.endpoint = opts.endpoint || "/feedback/api";
-      this.accent = opts.accent || "indigo";
-      this.position = opts.position || "bl";
-      this.size = opts.size || "default";
-      this.fabVisible = opts.fabVisible !== false;
-      this.enableScreenshots = opts.enableScreenshots !== false;
+      const savedSettings = this._loadToolbarSettings();
+      this.toolbarSettings = this._normalizeToolbarSettings({
+        accent: savedSettings.accent || opts.accent || "indigo",
+        position: savedSettings.position || opts.position || "bl",
+        size: savedSettings.size || opts.size || "default",
+        fabVisible: savedSettings.fabVisible != null ? savedSettings.fabVisible : (opts.fabVisible !== false),
+        enableScreenshots: savedSettings.enableScreenshots != null ? savedSettings.enableScreenshots : (opts.enableScreenshots !== false)
+      });
+      this.accent = this.toolbarSettings.accent || "indigo";
+      this.position = this.toolbarSettings.position || "bl";
+      this.size = this.toolbarSettings.size || "default";
+      this.fabVisible = this.toolbarSettings.fabVisible !== false;
+      this.enableScreenshots = this.toolbarSettings.enableScreenshots !== false;
       this.legacyStorageEndpoint = opts.legacyStorageEndpoint || this.legacyStorageEndpoint;
       this.healthIntervalMs = (opts.healthInterval || 60) * 1000;
 
@@ -84,6 +93,7 @@
       if (pins) pins.remove();
       const styles = document.getElementById("rm-toolbar-styles");
       if (styles) styles.remove();
+      this._settingsPanelOpen = false;
     },
   });
 

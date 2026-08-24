@@ -4,6 +4,7 @@
       document.getElementById("rm-fab").addEventListener("click", () => self.toggleMode());
       document.getElementById("rm-panel-toggle").addEventListener("click", () => self.togglePanel());
       document.getElementById("rm-panel-close").addEventListener("click", () => self.togglePanel());
+      document.getElementById("rm-settings-toggle").addEventListener("click", () => self._toggleSettings());
       document.getElementById("rm-btn-cancel").addEventListener("click", () => self._closePopup());
       document.getElementById("rm-btn-submit").addEventListener("click", (e) => self.submitAnnotation(e));
       document.getElementById("rm-popup-input").addEventListener("input", () => self._updateCharCount());
@@ -15,6 +16,13 @@
       // Custom menus (intent/severity/status) — button+menu, never native selects
       // so host FormSelect/Select2 enhancers cannot rewrite our DOM (#4).
       this.root.addEventListener("click", (e) => {
+        const setting = e.target.closest("[data-setting]");
+        if (setting) {
+          e.preventDefault();
+          e.stopPropagation();
+          this._setToolbarSetting(setting.dataset.setting, setting.dataset.value);
+          return;
+        }
         const option = e.target.closest(".rm-menu-option");
         if (option) {
           e.preventDefault();
@@ -147,10 +155,6 @@
       this.active = !this.active;
       if (this.active) {
         this._activateMode();
-        // Always open panel when activating annotation mode
-        if (document.getElementById("rm-panel").style.display !== "flex") {
-          this.togglePanel();
-        }
       } else {
         this._deactivateMode();
       }
@@ -161,7 +165,7 @@
       const iconSize = this._fabIconSize();
       fab.style.transform = "scale(0.9)";
       fab.style.boxShadow = `0 0 0 3px ${this._accentBg()}, 0 0 0 6px rgba(99,102,241,0.2)`;
-      fab.innerHTML = `<svg viewBox="0 0 24 24" style="width:${iconSize}px;height:${iconSize}px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M6 18L18 6M6 6l12 12"/></svg><span class="rm-fab-badge" id="rm-fab-badge">${document.getElementById("rm-fab-badge")?.textContent || ""}</span>`;
+      fab.innerHTML = `<svg viewBox="0 0 24 24" style="width:${iconSize}px;height:${iconSize}px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M6 18L18 6M6 6l12 12"/></svg>`;
       document.addEventListener("mousemove", this._boundMouseMove, true);
       document.addEventListener("mousedown", this._boundMouseDown, true);
       document.addEventListener("mouseup", this._boundMouseUp, true);
@@ -177,7 +181,7 @@
         const iconSize = this._fabIconSize();
         fab.style.transform = "";
         fab.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-        fab.innerHTML = `<svg viewBox="0 0 24 24" style="width:${iconSize}px;height:${iconSize}px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span class="rm-fab-badge" id="rm-fab-badge">${this.annotations.length || ""}</span>`;
+        fab.innerHTML = `<svg viewBox="0 0 24 24" style="width:${iconSize}px;height:${iconSize}px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>`;
         this._updateCount();
       }
       document.removeEventListener("mousemove", this._boundMouseMove, true);

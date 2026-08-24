@@ -31,7 +31,7 @@ module RailsMarkup
           title: "Toolbar Size",
           type: :select,
           options: %w[slim compact default],
-          labels: { "slim" => "Slim (32px)", "compact" => "Compact (40px)", "default" => "Default (48px)" }
+          labels: { "slim" => "Slim (32px)", "compact" => "Compact (36px)", "default" => "Default (40px)" }
         },
         fab: {
           title: "Show Floating Button",

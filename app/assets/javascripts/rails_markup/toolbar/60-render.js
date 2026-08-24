@@ -329,7 +329,7 @@
       const count = this.annotations.length;
       const countEl = document.getElementById("rm-panel-count");
       if (countEl) countEl.textContent = count;
-      const badge = document.getElementById("rm-fab-badge");
+      const badge = document.getElementById("rm-panel-toggle-badge");
       if (badge) {
         if (count > 0) { badge.textContent = count; badge.style.display = "flex"; }
         else { badge.style.display = "none"; }
@@ -418,6 +418,119 @@
         dot.style.boxShadow = this.serverOnline ? "0 0 0 2px rgba(74,222,128,0.2)" : "";
       }
       if (text) text.textContent = this.serverOnline ? "Connected" : (this._syncUnavailable || "Offline");
+    },
+    _validToolbarAccent(value) {
+      return ["indigo", "amber", "blue", "emerald", "rose"].includes(value);
+    },
+    _validToolbarPosition(value) {
+      return ["bl", "br", "tl", "tr"].includes(value);
+    },
+    _validToolbarSize(value) {
+      return ["slim", "compact", "default"].includes(value);
+    },
+    _toolbarSettingOptions(setting) {
+      switch (setting) {
+      case "accent":
+        return [
+          ["indigo", "Indigo"],
+          ["amber", "Amber"],
+          ["blue", "Blue"],
+          ["emerald", "Emerald"],
+          ["rose", "Rose"]
+        ];
+      case "position":
+        return [
+          ["bl", "Bottom-left"],
+          ["br", "Bottom-right"],
+          ["tl", "Top-left"],
+          ["tr", "Top-right"]
+        ];
+      case "size":
+        return [
+          ["default", "Default"],
+          ["compact", "Compact"],
+          ["slim", "Slim"]
+        ];
+      case "fabVisible":
+      case "enableScreenshots":
+        return [
+          [true, "On"],
+          [false, "Off"]
+        ];
+      default:
+        return [];
+      }
+    },
+    _toolbarSettingLabel(setting) {
+      switch (setting) {
+      case "accent": return "Accent";
+      case "position": return "Position";
+      case "size": return "Size";
+      case "fabVisible": return "Show FAB";
+      case "enableScreenshots": return "Screenshots";
+      default: return setting;
+      }
+    },
+    _toolbarSettingCurrentValue(setting) {
+      switch (setting) {
+      case "accent": return this.accent;
+      case "position": return this.position;
+      case "size": return this.size;
+      case "fabVisible": return this.fabVisible;
+      case "enableScreenshots": return this.enableScreenshots;
+      default: return null;
+      }
+    },
+    _toolbarSettingDisplayValue(value) {
+      return value === true ? "true" : value === false ? "false" : String(value);
+    },
+    _toolbarSettingsMarkup() {
+      return [
+        "accent",
+        "position",
+        "size",
+        "fabVisible",
+        "enableScreenshots"
+      ].map(setting => this._toolbarSettingsRowMarkup(setting)).join("");
+    },
+    _toolbarSettingsRowMarkup(setting) {
+      const current = this._toolbarSettingCurrentValue(setting);
+      const options = this._toolbarSettingOptions(setting);
+      const buttons = options.map(([value, label]) => {
+        const active = String(value) === String(current);
+        const valueAttr = this._toolbarSettingDisplayValue(value);
+        return `<button type="button" class="rm-chip${active ? " rm-chip-active" : " rm-chip-inactive"} rm-setting-chip" data-setting="${setting}" data-value="${this._esc(valueAttr)}"${active ? ` style="background:${this._accentBg()}"` : ""}>${this._esc(label)}</button>`;
+      }).join("");
+      return `
+        <div class="rm-settings-group">
+          <div class="rm-settings-label">${this._esc(this._toolbarSettingLabel(setting))}</div>
+          <div class="rm-settings-options">${buttons}</div>
+        </div>
+      `;
+    },
+    _toolbarSettingValue(setting, rawValue) {
+      if (setting === "fabVisible" || setting === "enableScreenshots") {
+        return rawValue === true || rawValue === "true";
+      }
+      return String(rawValue || "");
+    },
+    _setToolbarSetting(setting, rawValue) {
+      const value = this._toolbarSettingValue(setting, rawValue);
+      const next = Object.assign({}, this.toolbarSettings, { [setting]: value });
+      const normalized = this._normalizeToolbarSettings(next);
+      if (JSON.stringify(normalized) === JSON.stringify(this.toolbarSettings)) return;
+      if (!this._saveToolbarSettings(normalized)) return;
+      this.toolbarSettings = normalized;
+      this.destroy();
+      this.init(this._bootstrapOptions || {});
+    },
+    _toggleSettings() {
+      const panel = document.getElementById("rm-settings-panel");
+      const toggle = document.getElementById("rm-settings-toggle");
+      if (!panel) return;
+      panel.hidden = !panel.hidden;
+      this._settingsPanelOpen = !panel.hidden;
+      if (toggle) toggle.setAttribute("aria-expanded", String(!panel.hidden));
     },
     async _captureElement(element) {
       try {

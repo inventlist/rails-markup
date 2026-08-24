@@ -64,6 +64,87 @@ test("namespaced storage remains isolated by endpoint", (t) => {
   assert.deepEqual(Array.from(beta.toolbar.annotations, annotation => annotation.comment), ["Beta"]);
 });
 
+test("stored toolbar settings override init-time defaults", (t) => {
+  const settingsKey = "rm-toolbar-settings:%2Ffeedback%2Fapi";
+  const harness = createToolbarHarness({
+    storage: {
+      [settingsKey]: {
+        accent: "rose",
+        position: "tr",
+        size: "compact",
+        fabVisible: false,
+        enableScreenshots: false
+      }
+    }
+  });
+  t.after(() => harness.reset());
+
+  harness.toolbar.init({
+    endpoint: "/feedback/api",
+    accent: "indigo",
+    position: "bl",
+    size: "default",
+    fabVisible: true,
+    enableScreenshots: true
+  });
+
+  assert.equal(harness.toolbar.accent, "rose");
+  assert.equal(harness.toolbar.position, "tr");
+  assert.equal(harness.toolbar.size, "compact");
+  assert.equal(harness.toolbar.fabVisible, false);
+  assert.equal(harness.toolbar.enableScreenshots, false);
+  assert.equal(harness.window.document.getElementById("rm-fab").style.display, "none");
+  assert.equal(harness.window.document.getElementById("rm-fab").style.right, "24px");
+  assert.equal(harness.window.document.getElementById("rm-fab").style.top, "24px");
+});
+
+test("toolbar renders an always-visible settings toggle and a smaller default FAB", (t) => {
+  const harness = createToolbarHarness();
+  t.after(() => harness.reset());
+
+  harness.toolbar.init({
+    endpoint: "/feedback/api",
+    accent: "indigo",
+    position: "bl",
+    size: "default",
+    fabVisible: true,
+    enableScreenshots: true
+  });
+
+  const settingsToggle = harness.window.document.getElementById("rm-settings-toggle");
+  assert.ok(settingsToggle);
+  assert.equal(settingsToggle.getAttribute("aria-controls"), "rm-settings-panel");
+  assert.equal(harness.window.document.getElementById("rm-fab").style.width, "40px");
+  assert.equal(harness.window.document.getElementById("rm-fab").style.height, "40px");
+  assert.equal(settingsToggle.style.left, "72px");
+  assert.equal(settingsToggle.style.bottom, "24px");
+});
+
+test("toolbar setting changes persist and reinitialize the runtime config", (t) => {
+  const settingsKey = "rm-toolbar-settings:%2Ffeedback%2Fapi";
+  const harness = createToolbarHarness();
+  t.after(() => harness.reset());
+
+  harness.toolbar.init({
+    endpoint: "/feedback/api",
+    accent: "indigo",
+    position: "bl",
+    size: "default",
+    fabVisible: true,
+    enableScreenshots: true
+  });
+
+  harness.toolbar._setToolbarSetting("accent", "emerald");
+  harness.toolbar._setToolbarSetting("fabVisible", false);
+
+  const stored = JSON.parse(harness.window.localStorage.getItem(settingsKey));
+  assert.equal(stored.accent, "emerald");
+  assert.equal(stored.fabVisible, false);
+  assert.equal(harness.toolbar.accent, "emerald");
+  assert.equal(harness.toolbar.fabVisible, false);
+  assert.equal(harness.window.document.getElementById("rm-fab").style.display, "none");
+});
+
 test("legacy records gain sync fields and only unmapped records enter the outbox", (t) => {
   const harness = createToolbarHarness({
     uuids: [uuidA, uuidB],
