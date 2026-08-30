@@ -12,8 +12,8 @@ module RailsMarkup
 
       desc "Install Rails Markup: create migration, initializer, auth controller, toolbar, and mount engine routes."
 
-      class_option :mount_path, type: :string, default: "/admin/annotations",
-        desc: "Path to mount the Rails Markup engine"
+      class_option :mount_path, type: :string, default: nil,
+        desc: "Path to mount the Rails Markup engine (leave blank to be prompted)"
       class_option :base_controller, type: :string, default: "ApplicationController",
         desc: "Base controller class for authentication"
       class_option :layout, type: :string, default: "application",
@@ -59,7 +59,7 @@ module RailsMarkup
       end
 
       def mount_engine
-        mount_path = options[:mount_path]
+        mount_path = resolved_mount_path
         route_line = %{mount RailsMarkup::Engine, at: "#{mount_path}" if defined?(RailsMarkup::Engine)}
         route route_line
       end
@@ -140,7 +140,7 @@ module RailsMarkup
         dev_url = detect_dev_url
         env_updates = {
           "RAILS_MARKUP_DEV_URL" => dev_url,
-          "RAILS_MARKUP_MOUNT_PATH" => options[:mount_path]
+          "RAILS_MARKUP_MOUNT_PATH" => resolved_mount_path
         }
         config.update_env(env_updates)
         say_status :create, ".mcp.json (dev URL: #{dev_url})", :green
@@ -159,7 +159,7 @@ module RailsMarkup
         say ""
         say "Next steps:"
         say "  1. Run migrations:  rails db:migrate"
-        say "  2. Visit dashboard: #{options[:mount_path]}"
+        say "  2. Visit dashboard: #{resolved_mount_path}"
         say "  3. Configure auth in config/initializers/rails_markup.rb"
         say ""
         dev_url = detect_dev_url
@@ -179,6 +179,40 @@ module RailsMarkup
       end
 
       private
+
+      def resolved_mount_path
+        @resolved_mount_path ||= begin
+          explicit = options[:mount_path]
+          return normalize_mount_path(explicit) if explicit && !explicit.strip.empty?
+
+          prompt_mount_path
+        end
+      end
+
+      def prompt_mount_path
+        return "/rails-markup" unless interactive_prompt_available?
+
+        if yes?("Choose a nested prefix before /rails-markup? (for example /admin/rails-markup or /dashboard/rails-markup)")
+          prefix = ask("Prefix segment (leave blank for admin)")
+          prefix = "admin" if prefix.to_s.strip.empty?
+          normalize_mount_path("#{prefix}/rails-markup")
+        else
+          "/rails-markup"
+        end
+      end
+
+      def interactive_prompt_available?
+        $stdin.tty? && $stdout.tty?
+      end
+
+      def normalize_mount_path(path)
+        value = path.to_s.strip
+        value = value.sub(%r{\A/+}, "")
+        value = value.sub(%r{/+\z}, "")
+        value = "/#{value}"
+        value = value.gsub(%r{/+}, "/")
+        value == "/" ? "/rails-markup" : value
+      end
 
       def migration_version
         "[#{ActiveRecord::Migration.current_version}]"

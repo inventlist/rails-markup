@@ -30,7 +30,7 @@ RailsMarkup::Engine.routes.draw do
 
   # External API (token-authenticated, used by MCP/CLI tools)
   # Paths: /external/pending, /external/:id, /external/:id/{action}
-  # Full URL (with mount): /admin/annotations/external/pending
+  # Full URL (with mount): /admin/rails-markup/external/pending
   namespace :external, defaults: { format: :json } do
     get "pending", to: "annotations#pending"
     get ":id", to: "annotations#show", constraints: { id: /\d+/ }

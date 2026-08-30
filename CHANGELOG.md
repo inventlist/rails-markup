@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.7] - 2026-08-30
+
+### Fixed
+
+- The installer now prompts for a nested mount prefix when `--mount-path` is omitted, and it normalizes explicit paths like `/admin/rails-markup`, `/dashboard/rails-markup`, or `/rails-markup` into the generated route and MCP config.
+- The MCP and CLI fallback mount path now use `/admin/rails-markup` instead of the legacy `/admin/annotations`, so new installs and local tooling stay aligned with the generated route.
+- The public landing/demo FAB icon is smaller, matching the toolbar sizing cleanup and improving the visual balance of the demo chrome.
+
 ## [1.4.6] - 2026-08-24
 
 ### Fixed

@@ -110,7 +110,7 @@ module RailsMarkup
     method_option :prod_url,   type: :string, desc: "Production URL (RAILS_MARKUP_PROD_URL)"
     method_option :prod_token, type: :string, desc: "Production API token (RAILS_MARKUP_PROD_TOKEN)"
     method_option :dev_url,    type: :string, desc: "Dev URL (RAILS_MARKUP_DEV_URL)"
-    method_option :mount_path, type: :string, desc: "Engine mount path (RAILS_MARKUP_MOUNT_PATH)"
+    method_option :mount_path, type: :string, desc: "Engine mount path (RAILS_MARKUP_MOUNT_PATH; e.g. /admin/rails-markup)"
     method_option :global, type: :boolean, default: false, desc: "Write to ~/.claude/settings.json"
     method_option :codex,  type: :boolean, default: false, desc: "Write to ~/.codex/config.toml"
     def configure
@@ -209,7 +209,7 @@ module RailsMarkup
     method_option :production, type: :boolean, default: false, desc: "Watch production"
     method_option :url, type: :string, desc: "Override base URL"
     method_option :token, type: :string, desc: "Override API token"
-    method_option :mount_path, type: :string, desc: "Engine mount path"
+    method_option :mount_path, type: :string, desc: "Engine mount path (e.g. /admin/rails-markup)"
     method_option :interval, type: :numeric, default: 5, desc: "Poll interval in seconds"
     def watch
       env = resolve_env(options[:production])
@@ -259,7 +259,7 @@ module RailsMarkup
     method_option :production, type: :boolean, default: false, desc: "Fetch from production"
     method_option :url, type: :string, desc: "Override base URL"
     method_option :token, type: :string, desc: "Override API token"
-    method_option :mount_path, type: :string, desc: "Engine mount path"
+    method_option :mount_path, type: :string, desc: "Engine mount path (e.g. /admin/rails-markup)"
     def pending
       env = resolve_env(options[:production])
       return unless env
@@ -433,7 +433,7 @@ module RailsMarkup
       desc: "Environment to fetch from"
     method_option :url, type: :string, desc: "Override base URL"
     method_option :token, type: :string, desc: "Override API token"
-    method_option :mount_path, type: :string, desc: "Engine mount path (default: /admin/annotations)"
+    method_option :mount_path, type: :string, desc: "Engine mount path (default: /admin/rails-markup; e.g. /admin/rails-markup)"
     def fetch(env_arg = nil)
       production = env_arg == "production" || options[:production] || options[:environment] == "production"
       env = resolve_env(production)
@@ -571,7 +571,7 @@ module RailsMarkup
       sections << "    --prod-url URL            Production URL"
       sections << "    --prod-token TOKEN        Production API token"
       sections << "    --dev-url URL             Development URL"
-      sections << "    --mount-path PATH         Engine mount path"
+      sections << "    --mount-path PATH         Engine mount path (e.g. /admin/rails-markup)"
       sections << "    --global                  Write to ~/.claude/settings.json"
       sections << "    --codex                   Write to ~/.codex/config.toml"
       sections << "  setup-production --url URL Generate token + configure production"
@@ -671,7 +671,7 @@ module RailsMarkup
       if production
         base_url = options[:url] || mcp_env["RAILS_MARKUP_PROD_URL"]
         token = options[:token] || mcp_env["RAILS_MARKUP_PROD_TOKEN"]
-        mount = options[:mount_path] || mcp_env["RAILS_MARKUP_MOUNT_PATH"] || "/admin/annotations"
+        mount = options[:mount_path] || mcp_env["RAILS_MARKUP_MOUNT_PATH"] || "/admin/rails-markup"
 
         unless base_url
           say "No production URL. Set it via:", :red
@@ -695,7 +695,7 @@ module RailsMarkup
       else
         base_url = options[:url] || mcp_env["RAILS_MARKUP_DEV_URL"]
         token = options[:token] || mcp_env["RAILS_MARKUP_DEV_TOKEN"]
-        mount = options[:mount_path] || mcp_env["RAILS_MARKUP_MOUNT_PATH"] || "/admin/annotations"
+        mount = options[:mount_path] || mcp_env["RAILS_MARKUP_MOUNT_PATH"] || "/admin/rails-markup"
 
         unless base_url
           say "No dev URL. Set it via:", :red

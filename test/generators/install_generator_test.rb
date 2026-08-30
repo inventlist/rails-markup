@@ -18,9 +18,9 @@ class InstallGeneratorTest < ActiveSupport::TestCase
 
   # -- Class options --
 
-  test "mount_path option defaults to /admin/annotations" do
+  test "mount_path option defaults to prompting for a nested prefix" do
     opt = RailsMarkup::Generators::InstallGenerator.class_options[:mount_path]
-    assert_equal "/admin/annotations", opt.default
+    assert_nil opt.default
   end
 
   test "base_controller option defaults to ApplicationController" do
@@ -204,6 +204,33 @@ class InstallGeneratorTest < ActiveSupport::TestCase
   test "install generator accepts a valid table name" do
     generator = RailsMarkup::Generators::InstallGenerator.new([], { "table_name" => "my_annotations" })
     assert_nil generator.validate_table_name
+  end
+
+  test "resolved mount path normalizes explicit input" do
+    generator = RailsMarkup::Generators::InstallGenerator.new([], { "mount_path" => "admin/rails-markup/" })
+    assert_equal "/admin/rails-markup", generator.send(:resolved_mount_path)
+  end
+
+  test "resolved mount path prompts for nested prefixes when interactive" do
+    generator = RailsMarkup::Generators::InstallGenerator.new
+
+    generator.stub(:interactive_prompt_available?, true) do
+      generator.stub(:yes?, true) do
+        generator.stub(:ask, "dashboard") do
+          assert_equal "/dashboard/rails-markup", generator.send(:resolved_mount_path)
+        end
+      end
+    end
+  end
+
+  test "resolved mount path falls back to root mount when interactive and no nested prefix is chosen" do
+    generator = RailsMarkup::Generators::InstallGenerator.new
+
+    generator.stub(:interactive_prompt_available?, true) do
+      generator.stub(:yes?, false) do
+        assert_equal "/rails-markup", generator.send(:resolved_mount_path)
+      end
+    end
   end
 
   test "legacy toolbar-block regex requires the generated render line" do

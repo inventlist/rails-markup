@@ -81,14 +81,14 @@ The generator creates:
 | `config/initializers/rails_markup.rb` | Configuration |
 | `app/controllers/rails_markup_auth_controller.rb` | Auth controller |
 | `bin/markup` | CLI wrapper |
-| Route mount | Engine at `/admin/annotations` |
+| Route mount | Engine at `/admin/rails-markup` |
 | Toolbar injection | Admin-gated `render "rails_markup/shared/toolbar"` in your layout |
 
 ### Generator options
 
 ```bash
 rails generate rails_markup:install \
-  --mount-path=/admin/annotations \
+  --mount-path=/admin/rails-markup \
   --base-controller=Admin::BaseController \
   --layout=application
 ```
@@ -169,7 +169,7 @@ end
 
 ## Dashboard
 
-Visit `/admin/annotations` for the full dashboard:
+Visit `/admin/rails-markup` for the full dashboard:
 
 - **List view** — status filters, search, author filter, load-more pagination
 - **Board view** — kanban with drag-and-drop status transitions

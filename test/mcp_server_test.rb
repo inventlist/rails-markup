@@ -668,7 +668,7 @@ class McpServerTest < Minitest::Test
 
   def test_mount_path_defaults_to_admin_annotations
     mcp = RailsMarkup::McpServer.new(store: @store, input: StringIO.new, output: @output)
-    assert_equal "/admin/annotations", mcp.send(:mount_path)
+    assert_equal "/admin/rails-markup", mcp.send(:mount_path)
   end
 
   def test_mount_path_reads_from_env
@@ -681,7 +681,7 @@ class McpServerTest < Minitest::Test
 
   def test_external_api_base_builds_correct_path
     mcp = RailsMarkup::McpServer.new(store: @store, input: StringIO.new, output: @output)
-    assert_equal "http://localhost:3000/admin/annotations/external",
+    assert_equal "http://localhost:3000/admin/rails-markup/external",
       mcp.send(:external_api_base, "http://localhost:3000")
   end
 
@@ -696,13 +696,13 @@ class McpServerTest < Minitest::Test
 
   def test_external_api_base_preserves_configured_base_path
     mcp = RailsMarkup::McpServer.new(store: @store, input: StringIO.new, output: @output)
-    assert_equal "https://example.test/my-app/admin/annotations/external",
+    assert_equal "https://example.test/my-app/admin/rails-markup/external",
       mcp.send(:external_api_base, "https://example.test/my-app")
   end
 
   def test_external_api_url_cannot_discard_or_escape_mount
     mcp = RailsMarkup::McpServer.new(store: @store, input: StringIO.new, output: @output)
-    assert_equal "https://example.test/my-app/admin/annotations/external/abc/resolve",
+    assert_equal "https://example.test/my-app/admin/rails-markup/external/abc/resolve",
       mcp.send(:external_api_url, "https://example.test/my-app", "abc", "resolve")
 
     assert_raises(RailsMarkup::McpServer::TargetError) do

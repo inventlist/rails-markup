@@ -17,7 +17,7 @@ module RailsMarkup
   #   RAILS_MARKUP_DEV_URL    — local Rails server URL (auto-detected on install)
   #   RAILS_MARKUP_PROD_URL   — production URL
   #   RAILS_MARKUP_PROD_TOKEN — production API token
-  #   RAILS_MARKUP_MOUNT_PATH — engine mount path (default: /admin/annotations)
+  #   RAILS_MARKUP_MOUNT_PATH — engine mount path (default: /admin/rails-markup)
   class McpServer
     class ToolError < StandardError; end
     class TargetError < ToolError; end
@@ -184,7 +184,7 @@ module RailsMarkup
     end
 
     def mount_path
-      config_value("RAILS_MARKUP_MOUNT_PATH") || "/admin/annotations"
+      config_value("RAILS_MARKUP_MOUNT_PATH") || "/admin/rails-markup"
     end
 
     def prod_url

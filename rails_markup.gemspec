@@ -50,7 +50,7 @@ Gem::Specification.new do |spec|
       rails db:migrate
 
     Options:
-      --mount-path=/admin/annotations  (engine route)
+      --mount-path=/admin/rails-markup  (engine route)
       --base-controller=AdminController (auth parent class)
       --layout=application             (toolbar injection)
   MSG
